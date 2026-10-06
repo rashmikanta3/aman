@@ -125,7 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function init() {
         $("login-view")?.classList.add("hidden");
         $("app-view")?.classList.remove("hidden");
-        
+
         if ($("display-team-name")) $("display-team-name").textContent = currentUser.display_name || currentUser.username;
         if ($("display-circle")) $("display-circle").textContent = currentUser.circle || "";
         if ($("display-role")) $("display-role").textContent = (currentUser.role || "user").toUpperCase();
@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             await Promise.all([loadDailyAttendance(), loadDailyLog(), loadAssets()]);
         } catch (err) {
-            console.error(err);
+            console.error("Initialization error:", err);
         }
     }
 
@@ -180,14 +180,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function syncReportTeams() {
-        if (!$("pdf-circle") \vert{}\vert{} !$("pdf-team")) return;
+        if (!$("pdf-circle") || !$("pdf-team")) return;
         const teams = await fetchTeams($("pdf-circle").value);
         fillTeamSelect($("pdf-team"), teams, "All Teams (Circle Summary)");
     }
     if ($("pdf-circle")) $("pdf-circle").onchange = () => syncReportTeams().catch(console.error);
 
     async function syncAttTeams() {
-        if (!$("att-filter-circle") \vert{}\vert{} !$("att-filter-team")) return;
+        if (!$("att-filter-circle") || !$("att-filter-team")) return;
         const teams = await fetchTeams($("att-filter-circle").value);
         fillTeamSelect($("att-filter-team"), teams, "All Teams in Circle");
     }
@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if ($("att-filter-team")) $("att-filter-team").onchange = loadDailyAttendance;
 
     async function syncVlTeams() {
-        if (!$("vl-filter-circle") \vert{}\vert{} !$("vl-filter-team")) return;
+        if (!$("vl-filter-circle") || !$("vl-filter-team")) return;
         const teams = await fetchTeams($("vl-filter-circle").value);
         fillTeamSelect($("vl-filter-team"), teams, null);
     }
@@ -220,7 +220,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // ---------- Attendance ----------
     async function loadDailyAttendance() {
-        if (!$("att-date") \vert{}\vert{} !$("att-tbody")) return;
+        if (!$("att-date") || !$("att-tbody")) return;
         const params = new URLSearchParams({ date_str: $("att-date").value });
 
         if (currentUser.role === "team") {
@@ -298,8 +298,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function clearVlForm() {
         ["vl-veh-no", "vl-supervisor", "vl-remarks", "vl-start-time", "vl-end-time", "vl-route"]
-            .forEach((id) => { if ($(id))$(id).value = ""; });
-        ["vl-start-km", "vl-end-km", "vl-total-km"].forEach((id) => { if ($(id))$(id).value = 0; });
+            .forEach((id) => { if ($(id)) $(id).value = ""; });
+        ["vl-start-km", "vl-end-km", "vl-total-km"].forEach((id) => { if ($(id)) $(id).value = 0; });
     }
 
     async function loadDailyLog() {
@@ -324,7 +324,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if ($("lock-vl-btn")) $("lock-vl-btn").disabled = !canEdit;
 
         if ($("vl-veh-no")) $("vl-veh-no").value = data.vehicle_no || "";
-        if ($("vl-supervisor")) $("vl-supervisor").value = data.driver_name || "";
+        // FIX: backend field is "supervisor" (was driver_name)
+        if ($("vl-supervisor")) $("vl-supervisor").value = data.supervisor || "";
         if ($("vl-remarks")) $("vl-remarks").value = data.remarks || "";
         if ($("vl-start-time")) $("vl-start-time").value = data.start_time || "";
         if ($("vl-end-time")) $("vl-end-time").value = data.end_time || "";
@@ -343,15 +344,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const payload = {
             team_id: teamId,
             date: $("vl-date").value,
-            vehicle_no: $("vl-veh-no").value.trim(),
-            driver_name: $("vl-supervisor").value.trim(),
-            remarks: $("vl-remarks").value.trim(),
-            start_time: $("vl-start-time").value,
-            end_time: $("vl-end-time").value,
-            start_km: parseInt($("vl-start-km").value) || 0,
-            end_km: parseInt($("vl-end-km").value) || 0,
-            total_km: parseInt($("vl-total-km").value) || 0,
-            journey_route: $("vl-route").value.trim(),
+            vehicle_no: $("vl-veh-no")?.value.trim() || "",
+            // FIX: backend field is "supervisor" (was driver_name)
+            supervisor: $("vl-supervisor")?.value.trim() || "",
+            remarks: $("vl-remarks")?.value.trim() || "",
+            start_time: $("vl-start-time")?.value || "",
+            end_time: $("vl-end-time")?.value || "",
+            start_km: parseInt($("vl-start-km")?.value) || 0,
+            end_km: parseInt($("vl-end-km")?.value) || 0,
+            total_km: parseInt($("vl-total-km")?.value) || 0,
+            journey_route: $("vl-route")?.value.trim() || "",
             lock: isLock,
             is_admin: isAdmin()
         };
@@ -383,7 +385,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if ($("dl-circle-log-pdf")) {
         $("dl-circle-log-pdf").onclick = () => {
-            window.open(`/api/reports/download-circle-log-pdf?${reportParams(false)}`, "_blank");
+            // Team-wise portrait log needs team_id, so include it here too
+            window.open(`/api/reports/download-circle-log-pdf?${reportParams(true)}`, "_blank");
         };
     }
     if ($("dl-att-pdf")) {
@@ -397,14 +400,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const teamCircle = $("dir-team-circle")?.value || "";
         const teams = await fetchTeams(teamCircle, true);
 
-        let tHtml = `<table><thead><tr><th>Circle</th><th>Team Area</th><th>Team Leader</th><th>Reporting Manager</th><th>Username</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+        let tHtml = `<table><thead><tr><th>Circle</th><th>Team Area</th><th>Team Leader</th><th>Supervisor</th><th>Reporting Manager</th><th>Username</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
         (teams || []).forEach((t) => {
             const tName = t.team_name || t.name || "-";
             tHtml += `
         <tr>
           <td>${esc(t.circle)}</td>
           <td><strong>${esc(tName)}</strong></td>
-          <td>${esc(t.team_leader) || "-"}</td>
+          <td>${esc(t.team_lead) || "-"}</td>
+          <td>${esc(t.supervisor) || "-"}</td>
           <td>${esc(t.reporting_manager) || "-"}</td>
           <td><code>${esc(t.username)}</code></td>
           <td><strong style="color:${t.is_active ? "#16a34a" : "#dc2626"}">${t.is_active ? "ACTIVE" : "INACTIVE"}</strong></td>
@@ -473,7 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if ($("dir-team-circle")) $("dir-team-circle").onchange = () => loadAdminDirectories().catch(console.error);
     if ($("dir-emp-circle")) $("dir-emp-circle").onchange = () => loadAdminDirectories().catch(console.error);
 
-    // ---------- Fixed Team Creation (Dual Compatibility) ----------
+    // ---------- Team Creation (payload matches backend TeamCreate) ----------
     const createTeamBtn = $("adm-create-team-btn");
     if (createTeamBtn) {
         createTeamBtn.onclick = async () => {
@@ -482,32 +486,29 @@ document.addEventListener("DOMContentLoaded", () => {
             const rawUser = ($("adm-team-user")?.value || "").trim();
             const rawPass = ($("adm-team-pass")?.value || "").trim();
             const rawLead = ($("adm-team-lead")?.value || "").trim();
+            const rawSup = ($("adm-team-supervisor")?.value || "").trim();
             const rawMgr = ($("adm-team-mgr")?.value || "").trim();
 
             if (!rawName) return alert("Please enter Team Name!");
-            if (!rawCircle) return alert("Please select or enter Circle!");
+            if (!rawCircle) return alert("Please select Circle!");
             if (!rawUser) return alert("Please enter Username!");
             if (!rawPass) return alert("Please enter Password!");
 
-            // Sends BOTH key variants to satisfy any backend Pydantic schema
             const payload = {
                 team_name: rawName,
-                name: rawName,
+                team_lead: rawLead,
+                supervisor: rawSup,
                 circle: rawCircle,
                 username: rawUser,
                 password: rawPass,
-                team_leader: rawLead || null,
-                reporting_manager: rawMgr || null,
-                shift: "Morning",
-                status: "Active",
-                is_active: true
+                reporting_manager: rawMgr
             };
 
             try {
                 await api("/api/admin/teams", jsonOpts("POST", payload));
                 alert("Team registered successfully!");
-                ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass", "adm-team-mgr"]
-                    .forEach((id) => { if ($(id))$(id).value = ""; });
+                ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass"]
+                    .forEach((id) => { if ($(id)) $(id).value = ""; });
                 await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
                 await loadAdminDirectories();
             } catch (err) {
@@ -520,17 +521,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (createEmpBtn) {
         createEmpBtn.onclick = async () => {
             const payload = {
-                emp_code: $("adm-emp-code").value.trim(),
-                name: $("adm-emp-name").value.trim(),
-                designation: $("adm-emp-desig").value.trim(),
-                team_id: parseInt($("adm-emp-team").value)
+                emp_code: $("adm-emp-code")?.value.trim() || "",
+                name: $("adm-emp-name")?.value.trim() || "",
+                designation: $("adm-emp-desig")?.value.trim() || "",
+                team_id: parseInt($("adm-emp-team")?.value) || null
             };
             if (!payload.emp_code || !payload.name || !payload.team_id) return alert("Fill employee details!");
 
             try {
                 await api("/api/admin/employees", jsonOpts("POST", payload));
                 alert("Employee registered!");
-                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id))$(id).value = ""; });
+                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id)) $(id).value = ""; });
                 await loadAdminDirectories();
             } catch (err) {
                 alert("Could not create employee: " + err.message);
@@ -538,7 +539,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    // ---------- Document Assets (Cloudflare R2 Direct URLs) ----------
+    // ---------- Cloudflare R2 Document Assets ----------
     async function loadAssets() {
         const tbody = $("assets-tbody");
         if (!tbody) return;
@@ -591,8 +592,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // ---------- Asset Upload (Cloudflare R2 multipart/form-data) ----------
-    const uploadForm = $("upload-asset-form") \vert{}\vert{} $("asset-upload-form");
+    // ---------- Asset Upload Form ----------
+    const uploadForm = $("upload-asset-form") || $("asset-upload-form");
     if (uploadForm) {
         uploadForm.addEventListener("submit", async (e) => {
             e.preventDefault();

@@ -22,7 +22,6 @@ from dotenv import load_dotenv
 # Load variables from .env file into environment
 load_dotenv()
 
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Operations, Reporting & Document Portal")
 
