@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: a4 landscape;
+            margin: 10mm;
+            margin-top: 12mm;
+            margin-bottom: 25mm;
+
+            @frame content_frame {
+                left: 10mm;
+                width: 277mm;
+                top: 10mm;
+                height: 165mm;
+            }
+
+            @frame footer_frame {
+                left: 10mm;
+                width: 277mm;
+                top: 180mm;
+                height: 25mm;
+            }
+        }
+
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 8pt;
+            color: #000;
+        }
+
+        .company-header {
+            text-align: center;
+            margin-bottom: 6px;
+        }
+
+        .company-header h2 {
+            font-size: 11pt;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .company-header p {
+            font-size: 7.5pt;
+            margin: 1px 0;
+        }
+
+        .title-banner {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .title-banner h3 {
+            font-size: 9.5pt;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .meta-table {
+            width: 100%;
+            border-bottom: 0.5pt solid #000;
+            padding-bottom: 3px;
+            margin-bottom: 6px;
+        }
+
+        .meta-table td {
+            border: none !important;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 0.5pt solid #000;
+            text-align: center;
+        }
+
+        th {
+            background: #f1f5f9;
+            padding: 5px;
+            font-size: 7.5pt;
+            font-weight: bold;
+        }
+
+        td {
+            padding: 4.5px;
+            font-size: 7.5pt;
+        }
+
+        thead {
+            display: table-header-group;
+        }
+
+        tr {
+            page-break-inside: avoid;
+        }
+
+        .sig-table {
+            width: 100%;
+            border: none !important;
+        }
+
+        .sig-table td {
+            border: none !important;
+            vertical-align: top;
+        }
+
+        .sig-box {
+            width: 250px;
+            text-align: center;
+            float: right;
+        }
+
+        .sig-line {
+            border-bottom: 0.8pt solid #000;
+            width: 80%;
+            margin: 0 auto 3px auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    
+
+    <div class="company-header">
+        <h2>AMMAN ASSOCIATED SERVICES PRIVATE LIMITED</h2>
+        <p>Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024</p>
+    </div>
+
+    <div class="title-banner">
+        <h3>VIGILANCE ENFORCEMENT CELL, {{ circle.upper() }} CIRCLE</h3>
+        <p style="font-weight:bold; font-size: 9pt; margin: 1px 0;">MONTH OF {{ month_name }} VEHICLE LOG BOOK TOTAL
+            KILOMETER DETAILS - {{ year }}</p>
+    </div>
+
+    <table class="meta-table">
+        <tr>
+            <td style="text-align:left;">Circle Name: {{ circle }}</td>
+            <td style="text-align:right;">Period: {{ month_name }} {{ year }}</td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 35px;">Sl No.</th>
+                <th>Area</th>
+                <th>Team Leader</th>
+                <th>Supervisor</th>
+                <th>Vehicle No.</th>
+                <th style="width: 140px;">Total Monthly Km's Running</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in vehicle_summary %}
+            <tr>
+                <td>{{ r.sl_no }}</td>
+                <td style="text-align: left; padding-left: 6px;"><strong>{{ r.area }}</strong></td>
+                <td style="text-align: left; padding-left: 6px;">{{ r.team_lead }}</td>
+                <td style="text-align: left; padding-left: 6px;">{{ r.supervisor }}</td>
+                <td>{{ r.vehicle_no }}</td>
+                <td><strong>{{ r.total_monthly_km }}</strong></td>
+            </tr>
+            {% endfor %}
+            <tr style="background:#f8fafc; font-weight:bold;">
+                <td colspan="5" style="text-align: right; padding-right: 12px;">Total Kilometer's of {{ circle }}
+                    Circle:</td>
+                <td><strong>{{ grand_total_km }} KM</strong></td>
+            </tr>
+        </tbody>
+    </table>
+    <br>
+    <br>
+    <br>
+
+    <!-- FIXED EXECUTIVE ENGINEER SIGNATURE ON EVERY PAGE -->
+    <div id="footer_frame">
+        <table class="sig-table">
+            <tr>
+                </td>
+                <td style="width: 50%;">
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <strong>Executive Engineer (Elect.)</strong><br>
+                        Enforcement & Vigilance Cell<br>
+                        TPSODL, {{ circle }} Circle
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+</body>
+
+</html>

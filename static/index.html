@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Vigilance Portal</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <!-- LOGIN -->
+    <div id="login-view" class="card center-box">
+        <h2>Vigilance Portal</h2>
+        <div id="login-err" style="color:red; font-size:12px; margin-bottom:8px;" class="hidden"></div>
+        <form id="login-form">
+            <label>Login Username</label>
+            <input type="text" id="login-user" required placeholder="admin or team login">
+            <label>Password</label>
+            <input type="password" id="login-pass" required placeholder="••••••••">
+            <button type="submit" class="btn primary" style="width: 100%;">Sign In</button>
+        </form>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="app-view" class="hidden">
+        <header class="app-header">
+            <div>
+                <strong id="display-team-name">TEAM</strong>
+                <span id="display-circle" class="badge">Circle</span>
+                <span id="display-role" class="badge role">Role</span>
+            </div>
+            <div>
+                <button class="btn secondary active" id="btn-tab-att">Daily Attendance</button>
+                <button class="btn secondary" id="btn-tab-log">Vehicle Log Book</button>
+                <button class="btn secondary" id="btn-tab-report">PDF Reports</button>
+                <button class="btn secondary" id="btn-tab-assets">Document Center</button>
+                <button class="btn secondary" id="btn-tab-admin">Admin Control</button>
+                <button class="btn danger" id="btn-logout">Logout</button>
+            </div>
+        </header>
+
+        <div class="container">
+
+            <!-- 1. ATTENDANCE ENTRY (WITH CIRCLE & TEAM NAVIGATION FOR ADMIN) -->
+            <section id="tab-att" class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3>Daily Attendance Entry</h3>
+                    <span id="att-lock-status" class="lock-indicator"></span>
+                </div>
+
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div>
+                        <label>Select Date</label>
+                        <input type="date" id="att-date">
+                    </div>
+                    <div id="att-admin-circle-box" class="hidden">
+                        <label>Filter Circle</label>
+                        <select id="att-filter-circle">
+                            <option value="Jeypore">Jeypore Circle</option>
+                            <option value="Rayagada">Rayagada Circle</option>
+                        </select>
+                    </div>
+                    <div id="att-admin-team-box" class="hidden">
+                        <label>Filter Team</label>
+                        <select id="att-filter-team"></select>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">Sl</th>
+                            <th>Emp Code</th>
+                            <th>Employee Name</th>
+                            <th>Designation</th>
+                            <th>Assigned Team</th>
+                            <th style="width: 120px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="att-tbody"></tbody>
+                </table>
+                <div style="margin-top: 15px; display:flex; gap: 10px;">
+                    <button class="btn primary" id="save-att-btn">💾 Save Attendance</button>
+                    <button class="btn danger" id="lock-att-btn">🔒 Save & Lock</button>
+                </div>
+            </section>
+
+            <!-- 2. VEHICLE LOG ENTRY (SUPERVISOR FIELD + ADMIN DROPDOWNS) -->
+            <section id="tab-log" class="card hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3>Vehicle Daily Log Book</h3>
+                    <span id="log-lock-status" class="lock-indicator"></span>
+                </div>
+
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div>
+                        <label>Date</label>
+                        <input type="date" id="vl-date">
+                    </div>
+                    <div id="vl-admin-circle-box" class="hidden">
+                        <label>Filter Circle</label>
+                        <select id="vl-filter-circle">
+                            <option value="Jeypore">Jeypore Circle</option>
+                            <option value="Rayagada">Rayagada Circle</option>
+                        </select>
+                    </div>
+                    <div id="vl-admin-team-box" class="hidden">
+                        <label>Select Team</label>
+                        <select id="vl-filter-team"></select>
+                    </div>
+                    <div>
+                        <label>Vehicle No</label>
+                        <input type="text" id="vl-veh-no" placeholder="OD-10-S-1404">
+                    </div>
+                </div>
+
+                <div class="grid-4">
+                    <div>
+                        <label>Supervisor Name</label>
+                        <input type="text" id="vl-supervisor" placeholder="Supervisor Name">
+                    </div>
+                    <div>
+                        <label>Start Time</label>
+                        <input type="text" id="vl-start-time" placeholder="10:00 AM">
+                    </div>
+                    <div>
+                        <label>End Time</label>
+                        <input type="text" id="vl-end-time" placeholder="05:20 PM">
+                    </div>
+                    <div>
+                        <label>Remarks</label>
+                        <input type="text" id="vl-remarks" placeholder="Site patrolling">
+                    </div>
+                </div>
+
+                <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
+                    <div><label>Start KM</label><input type="number" id="vl-start-km" value="0"></div>
+                    <div><label>End KM</label><input type="number" id="vl-end-km" value="0"></div>
+                    <div><label>Total KM Run (Auto)</label><input type="number" id="vl-total-km" readonly
+                            style="background:#f1f5f9; font-weight:bold;"></div>
+                </div>
+
+                <div>
+                    <label>Journey Route (From - To)</label>
+                    <textarea id="vl-route" placeholder="e.g. Jeypore to Borigumma sub-station and return"></textarea>
+                </div>
+
+                <div style="margin-top: 10px; display:flex; gap: 10px;">
+                    <button class="btn primary" id="save-vl-btn">💾 Save Log</button>
+                    <button class="btn danger" id="lock-vl-btn">🔒 Save & Lock Log</button>
+                </div>
+            </section>
+
+            <!-- 3. PDF REPORTS (DYNAMIC CASCADING CIRCLE -> TEAM) -->
+            <section id="tab-report" class="card hidden">
+                <h3>Official A4 PDF Downloads</h3>
+                <div class="grid-4" style="margin-top: 12px;">
+                    <div>
+                        <label>Circle</label>
+                        <select id="pdf-circle">
+                            <option value="Jeypore">Jeypore Circle</option>
+                            <option value="Rayagada">Rayagada Circle</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Team Scope</label>
+                        <select id="pdf-team"></select>
+                    </div>
+                    <div>
+                        <label>Year</label>
+                        <input type="number" id="pdf-year" value="2026">
+                    </div>
+                    <div>
+                        <label>Month</label>
+                        <select id="pdf-month">
+                            <option value="1">Jan</option>
+                            <option value="2">Feb</option>
+                            <option value="3">Mar</option>
+                            <option value="4">Apr</option>
+                            <option value="5">May</option>
+                            <option value="6">Jun</option>
+                            <option value="7">Jul</option>
+                            <option value="8">Aug</option>
+                            <option value="9">Sep</option>
+                            <option value="10" selected>Oct</option>
+                            <option value="11">Nov</option>
+                            <option value="12">Dec</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:12px; margin-top:20px;">
+                    <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (A4 Landscape)</button>
+                    <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log Book (Auto
+                        Portrait/Landscape)</button>
+                </div>
+            </section>
+
+            <!-- 4. DOCUMENT ASSETS -->
+            <section id="tab-assets" class="card hidden">
+                <h3>Document & Format Center</h3>
+                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official
+                    operational circulars.</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">Sl</th>
+                            <th>Document Title</th>
+                            <th>Filename</th>
+                            <th style="width: 180px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assets-tbody"></tbody>
+                </table>
+            </section>
+
+            <!-- 5. ADMIN CONTROL PANEL -->
+            <section id="tab-admin" class="card hidden">
+                <h3>Admin Master Control Panel</h3>
+                <hr style="margin: 15px 0;">
+
+                <h4>1. Register New Team & Assign Supervisor</h4>
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
+                            placeholder="e.g. Borigumma"></div>
+                    <div><label>Team Lead</label><input type="text" id="adm-team-lead"
+                            placeholder="Er. Sai Swaroop Mohanty"></div>
+                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
+                            placeholder="M.Hariprasad Maharshee"></div>
+                    <div>
+                        <label>Circle</label>
+                        <select id="adm-team-circle">
+                            <option value="Jeypore">Jeypore</option>
+                            <option value="Rayagada">Rayagada</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
+                    <div><label>Login Username</label><input type="text" id="adm-team-user"
+                            placeholder="borigamma_team"></div>
+                    <div><label>Password</label><input type="text" id="adm-team-pass" placeholder="password123"></div>
+                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
+                            value="Executive Engg, Enforcement Cell, TPSODL"></div>
+                </div>
+                <button class="btn primary" id="adm-create-team-btn">Create Team</button>
+
+                <hr style="margin: 20px 0;">
+
+                <h4>2. Register Employee & Assign to Team</h4>
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div><label>Employee Code</label><input type="text" id="adm-emp-code" placeholder="EMP001"></div>
+                    <div><label>Full Name</label><input type="text" id="adm-emp-name" placeholder="Ajaya Polai"></div>
+                    <div><label>Designation</label><input type="text" id="adm-emp-desig" placeholder="Technician"></div>
+                    <div><label>Assign to Team</label><select id="adm-emp-team"></select></div>
+                </div>
+                <button class="btn primary" id="adm-create-emp-btn">Create & Assign Employee</button>
+
+                <hr style="margin: 20px 0;">
+
+                <h4>3. Upload Document to Assets Folder</h4>
+                <form id="upload-asset-form" style="max-width: 500px; margin-top: 10px;">
+                    <label>Document Title</label>
+                    <input type="text" id="asset-title" placeholder="e.g. Standard Format Sheet" required>
+                    <label>Select File</label>
+                    <input type="file" id="asset-file" required>
+                    <button type="submit" class="btn primary">Upload Document</button>
+                </form>
+
+                <hr style="margin: 20px 0;">
+
+                <!-- Team Directory Filtered by Circle -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4>4. Team Accounts Directory (Active / Inactive)</h4>
+                    <div>
+                        <label style="display:inline; margin-right:5px;">Filter Circle:</label>
+                        <select id="dir-team-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
+                            <option value="All Circles">All Circles</option>
+                            <option value="Jeypore">Jeypore</option>
+                            <option value="Rayagada">Rayagada</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="adm-team-list" style="margin-top: 10px;"></div>
+
+                <hr style="margin: 20px 0;">
+
+                <!-- Employee Directory Filtered by Circle -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h4>5. Employee Directory (Active / Inactive)</h4>
+                    <div>
+                        <label style="display:inline; margin-right:5px;">Filter Circle:</label>
+                        <select id="dir-emp-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
+                            <option value="All Circles">All Circles</option>
+                            <option value="Jeypore">Jeypore</option>
+                            <option value="Rayagada">Rayagada</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="adm-emp-list" style="margin-top: 10px;"></div>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

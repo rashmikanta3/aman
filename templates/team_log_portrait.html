@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page {
+      size: a4 portrait;
+      margin: 10mm;
+      margin-top: 12mm;
+      margin-bottom: 24mm;
+
+      @frame content_frame {
+        left: 10mm;
+        width: 190mm;
+        top: 10mm;
+        height: 250mm;
+      }
+
+      @frame footer_frame {
+        left: 10mm;
+        width: 190mm;
+        top: 265mm;
+        height: 22mm;
+      }
+    }
+
+    body {
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 7.5pt;
+      color: #000;
+    }
+
+    .company-header {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .company-header h2 {
+      font-size: 10.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    .company-header p {
+      font-size: 7pt;
+      color: #334155;
+      margin: 1px 0;
+    }
+
+    .title-banner {
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .title-banner h3 {
+      font-size: 8.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    .meta-table {
+      width: 100%;
+      border-top: 0.5pt solid #000;
+      border-bottom: 0.5pt solid #000;
+      margin-bottom: 6px;
+    }
+
+    .meta-table td {
+      border: none !important;
+      font-weight: bold;
+      padding: 2px 0;
+      font-size: 7.5pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border: 0.5pt solid #000;
+      text-align: center;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      padding: 4px 2px;
+      font-size: 6.5pt;
+      font-weight: bold;
+    }
+
+    td {
+      padding: 3px 2px;
+      font-size: 6.5pt;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    tr {
+      page-break-inside: avoid;
+    }
+
+    .sig-table {
+      width: 100%;
+      border: none !important;
+    }
+
+    .sig-table td {
+      border: none !important;
+      vertical-align: top;
+    }
+
+    .sig-box {
+      width: 220px;
+      text-align: center;
+    }
+
+    .sig-line {
+      border-bottom: 0.8pt solid #000;
+      width: 80%;
+      margin: 0 auto 3px auto;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="company-header">
+    <h2>AMMAN ASSOCIATED SERVICES PRIVATE LIMITED</h2>
+    <p>DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024</p>
+  </div>
+
+  <div class="title-banner">
+    <h3>VIGILANCE ENFORCEMENT CELL, {{ circle.upper() }} CIRCLE</h3>
+    <p style="font-weight:bold; font-size: 8pt; margin: 1px 0;">DAILY VEHICLE LOG BOOK - {{ team_name.upper() }}</p>
+  </div>
+
+  <table class="meta-table">
+    <tr>
+      <td style="text-align: left;">Area: {{ team_name }}</td>
+      <td style="text-align: center;">Team Leader: {{ team_lead or '-' }}</td>
+      <td style="text-align: right;">Period: {{ month_name }} {{ year }}</td>
+    </tr>
+  </table>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25px;">Date</th>
+        <th style="width: 65px;">Vehicle No.</th>
+        <th style="width: 70px;">Supervisor</th>
+        <th style="width: 55px;">Time</th>
+        <th>Journey Route (From - To)</th>
+        <th style="width: 40px;">Start KM</th>
+        <th style="width: 40px;">End KM</th>
+        <th style="width: 40px;">Run KM</th>
+        <th style="width: 60px;">Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in logs %}
+      <tr>
+        <td>{{ l.date.strftime('%d') if l.date else '' }}</td>
+        <td>{{ l.vehicle_no or '-' }}</td>
+        <td style="text-align: left; padding-left: 3px;">{{ l.supervisor or supervisor or '-' }}</td>
+        <td>{{ l.start_time or '' }} - {{ l.end_time or '' }}</td>
+        <td style="text-align: left; padding-left: 3px;">{{ l.journey_route or '-' }}</td>
+        <td>{{ l.start_km }}</td>
+        <td>{{ l.end_km }}</td>
+        <td><strong>{{ l.total_km }}</strong></td>
+        <td>{{ l.remarks or '' }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="9" style="padding: 10px; color: #64748b;">No vehicle entries logged for this month.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    <!-- ==================== TOTAL ROW ==================== -->
+    <tfoot>
+      <tr style="background: #e2e8f0; font-weight: bold;">
+        <td colspan="7" style="text-align: right; padding-right: 8px; font-weight: bold;">
+          Total Monthly Kilometer's Running:
+        </td>
+        <td style="font-weight: bold;"><strong>{{ total_km }}</strong></td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  </table>
+  <br>
+  <br>
+  <br>
+<!-- FIXED TEAM LEADER SIGNATURE ON EVERY PAGE -->
+  <div id="footer_frame">
+    <table class="sig-table">
+      <tr>
+        <td style="width: 50%; text-align: right;">
+          <div class="sig-box" style="float: right;">
+            <div class="sig-line"></div>
+            <span>{{ team_lead or '-' }}</span><br>
+            <span style="font-size: 6.5pt; color: #334155;">Enforcement Cell ({{ team_name }} Area)TPSODL {{circle}}</span>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+
+</html>
