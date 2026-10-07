@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Date, Text,
-    ForeignKey, Boolean, DateTime, UniqueConstraint
+    ForeignKey, Boolean, DateTime, Float, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from database import Base
@@ -21,7 +21,6 @@ class Team(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team_name = Column(String(100), unique=True, nullable=False)
-    # Supports either team_lead or team_leader in database
     team_lead = Column("team_lead", String(100), nullable=True, default="")
     supervisor = Column(String(100), nullable=True, default="")
     circle = Column(String(50), nullable=False)
@@ -29,6 +28,14 @@ class Team(Base):
     password = Column(String(100), nullable=False)
     reporting_manager = Column(String(150), nullable=False)
     is_active = Column(Boolean, default=True)
+
+    @property
+    def team_leader(self):
+        return self.team_lead
+
+    @team_leader.setter
+    def team_leader(self, value):
+        self.team_lead = value
 
     employees = relationship("Employee", back_populates="team", cascade="all, delete-orphan")
     vehicle_logs = relationship("VehicleLog", back_populates="team", cascade="all, delete-orphan")
@@ -83,6 +90,14 @@ class VehicleLog(Base):
     remarks = Column(Text, nullable=True)
     is_locked = Column(Boolean, default=False)
 
+    # Operational Performance & Mode Fields
+    load_booked = Column(Float, default=0.0)
+    amount_collected = Column(Float, default=0.0)
+    number_of_dc = Column(Integer, default=0)
+    team_leader_present = Column(Boolean, default=True)
+    operation_mode = Column(String(50), default="Operated Independently")
+    merged_with_team = Column(String(100), nullable=True, default="")
+
     team = relationship("Team", back_populates="vehicle_logs")
 
 class AssetFile(Base):
@@ -92,5 +107,5 @@ class AssetFile(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(150), nullable=False)
     filename = Column(String(255), nullable=False)
-    file_url = Column(String(500), nullable=False)  # Stores public Cloudflare R2 link
+    file_url = Column(String(500), nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)

@@ -6,24 +6,23 @@ from datetime import date, datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form,Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func
 from pydantic import BaseModel
-from xhtml2pdf import pisa
-import models
-from database import engine, get_db, SessionLocal, Base
+
 import boto3
 from botocore.config import Config
 from dotenv import load_dotenv
+
+import models
+from database import engine, get_db, SessionLocal, Base
 import queries
 import reports_pdf
-# Load variables from .env file into environment
-load_dotenv()
 
+load_dotenv()
 
 app = FastAPI(title="Operations, Reporting & Document Portal")
 
@@ -32,15 +31,14 @@ ASSETS_DIR = BASE_DIR / "assets"
 STATIC_DIR = BASE_DIR / "static"
 ASSETS_DIR.mkdir(exist_ok=True)
 
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 models.Base.metadata.create_all(bind=engine)
 
-# --- Cloudflare R2 S3 Client Configuration ---
+# Cloudflare R2 S3 Client Configuration
 R2_ENDPOINT = os.getenv("R2_ENDPOINT")
 R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY")
 R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
 R2_BUCKET = os.getenv("R2_BUCKET", "aman")
-R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL") # e.g., https://pub-xxxxxx.r2.dev
+R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
 
 s3_client = boto3.client(
     's3',
@@ -50,14 +48,6 @@ s3_client = boto3.client(
     region_name='auto',
     config=Config(signature_version='s3v4')
 )
-
-
-def render_html_to_pdf(html_content: str) -> bytes:
-    buffer = io.BytesIO()
-    pisa_status = pisa.CreatePDF(html_content, dest=buffer)
-    if pisa_status.err:
-        raise RuntimeError(f"PDF creation failed: {pisa_status.err}")
-    return buffer.getvalue()
 
 def seed_admin():
     db = SessionLocal()
@@ -114,6 +104,12 @@ class VehicleLogCreate(BaseModel):
     end_km: Optional[int] = 0
     total_km: Optional[int] = 0
     remarks: Optional[str] = ""
+    load_booked: Optional[float] = 0.0
+    amount_collected: Optional[float] = 0.0
+    number_of_dc: Optional[int] = 0
+    team_leader_present: Optional[bool] = True
+    operation_mode: Optional[str] = "Operated Independently"
+    merged_with_team: Optional[str] = ""
     lock: bool = False
     is_admin: bool = False
 
@@ -138,7 +134,6 @@ def login(creds: LoginReq, db: Session = Depends(get_db)):
         }
     raise HTTPException(status_code=400, detail="Invalid username or password")
 
-# Admin Team Management
 @app.post("/api/admin/teams")
 def create_team(t: TeamCreate, db: Session = Depends(get_db)):
     if db.query(models.Team).filter(models.Team.username == t.username).first():
@@ -164,10 +159,9 @@ def list_teams(circle: Optional[str] = None, all_status: bool = False, db: Sessi
     if not all_status:
         q = q.filter(models.Team.is_active == True)
     if circle and circle != "All Circles":
-        q = q.filter(models.Team.circle == circle)
+        q = q.filter(models.Team.circle.ilike(circle.strip()))
     return q.order_by(models.Team.circle, models.Team.team_name).all()
 
-# Admin Employee Management
 @app.post("/api/admin/employees")
 def create_employee(emp: EmpCreate, db: Session = Depends(get_db)):
     if db.query(models.Employee).filter(models.Employee.emp_code == emp.emp_code).first():
@@ -189,10 +183,9 @@ def toggle_employee_active(emp_id: int, payload: StatusToggle, db: Session = Dep
 def list_all_employees(circle: Optional[str] = None, db: Session = Depends(get_db)):
     q = db.query(models.Employee).join(models.Team)
     if circle and circle != "All Circles":
-        q = q.filter(models.Team.circle == circle)
+        q = q.filter(models.Team.circle.ilike(circle.strip()))
     return q.order_by(models.Team.circle, models.Team.team_name, models.Employee.name).all()
 
-# Attendance Entry
 @app.get("/api/attendance/day")
 def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: Optional[int] = None, db: Session = Depends(get_db)):
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -201,7 +194,7 @@ def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: O
         models.Team.is_active == True
     )
     if circle and circle != "All Circles":
-        q = q.filter(models.Team.circle == circle)
+        q = q.filter(models.Team.circle.ilike(circle.strip()))
     if team_id:
         q = q.filter(models.Employee.team_id == team_id)
     employees = q.order_by(models.Team.circle, models.Team.team_name, models.Employee.id).all()
@@ -247,7 +240,6 @@ def submit_attendance(payload: AttSubmitReq, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Attendance saved successfully"}
 
-# Vehicle Log Entry
 @app.get("/api/vehicle-log/day")
 def get_vehicle_log_day(date_str: str, team_id: int, db: Session = Depends(get_db)):
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -273,9 +265,26 @@ def get_vehicle_log_day(date_str: str, team_id: int, db: Session = Depends(get_d
             "end_km": log.end_km,
             "total_km": log.total_km,
             "remarks": log.remarks,
+            "load_booked": getattr(log, 'load_booked', 0.0),
+            "amount_collected": getattr(log, 'amount_collected', 0.0),
+            "number_of_dc": getattr(log, 'number_of_dc', 0),
+            "team_leader_present": getattr(log, 'team_leader_present', True),
+            "operation_mode": getattr(log, 'operation_mode', 'Operated Independently'),
+            "merged_with_team": getattr(log, 'merged_with_team', ''),
             "is_locked": log.is_locked
         }
-    return {"team_id": team_id, "date": target_date, "supervisor": default_super, "is_locked": False}
+    return {
+        "team_id": team_id,
+        "date": target_date,
+        "supervisor": default_super,
+        "load_booked": 0.0,
+        "amount_collected": 0.0,
+        "number_of_dc": 0,
+        "team_leader_present": True,
+        "operation_mode": "Operated Independently",
+        "merged_with_team": "",
+        "is_locked": False
+    }
 
 @app.post("/api/vehicle-log/submit")
 def submit_vehicle_log(payload: VehicleLogCreate, db: Session = Depends(get_db)):
@@ -300,8 +309,8 @@ def submit_vehicle_log(payload: VehicleLogCreate, db: Session = Depends(get_db))
     db.commit()
     return {"message": "Vehicle log saved successfully"}
 
-# Form D Attendance PDF Download
-# In main.py: inside download_attendance_pdf(...)
+# --- PDF Reports ---
+
 @app.get("/api/reports/download-circle-log-pdf")
 def download_circle_log_pdf(
     circle: str,
@@ -326,13 +335,32 @@ def download_attendance_pdf(
     team_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
+    team_lead = None
+    team_name = None
+
+    if team_id:
+        team = db.query(models.Team).filter(models.Team.id == team_id).first()
+        if team:
+            team_lead = team.team_lead or team.team_leader
+            team_name = team.team_name
+
     employees, attendance_map = queries.fetch_attendance_data(db, circle, year, month, team_id)
-    pdf_bytes = reports_pdf.build_form_d_pdf(circle, year, month, employees, attendance_map)
-    
+
+    pdf_bytes = reports_pdf.build_form_d_pdf(
+        circle_name=circle,
+        year=year,
+        month=month,
+        employees=employees,
+        attendance_map=attendance_map,
+        team_lead=team_lead,
+        team_name=team_name
+    )
+
+    filename_prefix = f"Form_D_Attendance_{team_name}" if team_name else f"Form_D_Attendance_{circle}"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename=Form_D_Attendance_{circle}_{month}_{year}.pdf"}
+        headers={"Content-Disposition": f"inline; filename={filename_prefix}_{month}_{year}.pdf"}
     )
 
 @app.get("/api/reports/download-team-log-pdf")
@@ -361,13 +389,29 @@ def download_team_log_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename=Daily_Log_{team.team_name}_{month}_{year}.pdf"}
     )
-# Document Assets Manage
+
+@app.get("/api/reports/download-performance-pdf")
+def download_performance_pdf(
+    circle: str,
+    year: int,
+    month: int,
+    team_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    perf_rows = queries.fetch_team_performance_data(db, circle, year, month, team_id)
+    pdf_bytes = reports_pdf.build_team_performance_pdf(circle, year, month, perf_rows)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=Team_Performance_{circle}_{month}_{year}.pdf"}
+    )
+
+# --- Assets ---
 
 @app.get("/api/assets")
 def list_assets(db: Session = Depends(get_db)):
-    """Fetch all uploaded asset files from the database."""
     return db.query(models.AssetFile).order_by(models.AssetFile.uploaded_at.desc()).all()
-
 
 @app.post("/api/admin/assets/upload")
 async def upload_asset(
@@ -375,8 +419,6 @@ async def upload_asset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Streams file directly to Cloudflare R2 without saving to server disk."""
-    # Prefix timestamp to avoid filename collisions
     safe_filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename.replace(' ', '_')}"
     file_bytes = await file.read()
 
@@ -390,9 +432,7 @@ async def upload_asset(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloudflare R2 Upload Failed: {str(e)}")
 
-    # Construct public download link
     public_file_url = f"{R2_PUBLIC_URL.rstrip('/')}/{safe_filename}"
-
     asset = models.AssetFile(
         title=title,
         filename=file.filename,
@@ -401,18 +441,14 @@ async def upload_asset(
     db.add(asset)
     db.commit()
     db.refresh(asset)
-
     return {"message": "Document uploaded successfully to Cloudflare R2!", "file_url": public_file_url}
-
 
 @app.delete("/api/admin/assets/{asset_id}")
 def delete_asset(asset_id: int, db: Session = Depends(get_db)):
-    """Deletes the document from Cloudflare R2 and removes the database record."""
     asset = db.query(models.AssetFile).filter(models.AssetFile.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Extract the R2 object key from the stored URL
     object_key = asset.file_url.split("/")[-1]
     try:
         s3_client.delete_object(Bucket=R2_BUCKET, Key=object_key)

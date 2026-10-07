@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Vigilance Portal</title>
+    <title>Vigilance Portal - TPSODL</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -42,7 +42,7 @@
 
         <div class="container">
 
-            <!-- 1. ATTENDANCE ENTRY (WITH CIRCLE & TEAM NAVIGATION FOR ADMIN) -->
+            <!-- 1. ATTENDANCE ENTRY -->
             <section id="tab-att" class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h3>Daily Attendance Entry</h3>
@@ -57,8 +57,12 @@
                     <div id="att-admin-circle-box" class="hidden">
                         <label>Filter Circle</label>
                         <select id="att-filter-circle">
-                            <option value="Jeypore">Jeypore Circle</option>
-                            <option value="Rayagada">Rayagada Circle</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                     <div id="att-admin-team-box" class="hidden">
@@ -86,7 +90,7 @@
                 </div>
             </section>
 
-            <!-- 2. VEHICLE LOG ENTRY (SUPERVISOR FIELD + ADMIN DROPDOWNS) -->
+            <!-- 2. VEHICLE LOG ENTRY -->
             <section id="tab-log" class="card hidden">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h3>Vehicle Daily Log Book</h3>
@@ -101,8 +105,12 @@
                     <div id="vl-admin-circle-box" class="hidden">
                         <label>Filter Circle</label>
                         <select id="vl-filter-circle">
-                            <option value="Jeypore">Jeypore Circle</option>
-                            <option value="Rayagada">Rayagada Circle</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                     <div id="vl-admin-team-box" class="hidden">
@@ -130,18 +138,55 @@
                     </div>
                     <div>
                         <label>Remarks</label>
-                        <input type="text" id="vl-remarks" placeholder="Site patrolling">
+                        <input type="text" id="vl-remarks" placeholder="Patrolling remarks">
                     </div>
                 </div>
 
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
                     <div><label>Start KM</label><input type="number" id="vl-start-km" value="0"></div>
                     <div><label>End KM</label><input type="number" id="vl-end-km" value="0"></div>
-                    <div><label>Total KM Run (Auto)</label><input type="number" id="vl-total-km" readonly
-                            style="background:#f1f5f9; font-weight:bold;"></div>
+                    <div><label>Total KM Run (Auto)</label><input type="number" id="vl-total-km" readonly style="background:#f1f5f9; font-weight:bold;"></div>
                 </div>
 
-                <div>
+                <h4 style="margin: 18px 0 8px 0; color:#1e293b;">Daily Enforcement Performance & Operation Mode</h4>
+                <div class="grid-4">
+                    <div>
+                        <label>Load Booked (in KW)</label>
+                        <input type="number" step="0.1" id="vl-load-booked" placeholder="e.g. 5.5">
+                    </div>
+                    <div>
+                        <label>Amount Collected (₹)</label>
+                        <input type="number" step="1" id="vl-amount-collected" placeholder="e.g. 25000">
+                    </div>
+                    <div>
+                        <label>Number of DC</label>
+                        <input type="number" id="vl-dc-count" placeholder="e.g. 8">
+                    </div>
+                    <div>
+                        <label>Team Leader Present?</label>
+                        <select id="vl-tl-present">
+                            <option value="true" selected>Yes (Present)</option>
+                            <option value="false">No (Absent)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div>
+                        <label>Mode of Team Operation</label>
+                        <select id="vl-op-mode">
+                            <option value="Operated Independently" selected>Operate Independently</option>
+                            <option value="Merged">Merge with Other Team</option>
+                            <option value="Did Not Operate">Did Not Operate</option>
+                        </select>
+                    </div>
+                    <div id="vl-merge-box" class="hidden">
+                        <label>Merged With Team</label>
+                        <input type="text" id="vl-merged-team" placeholder="e.g. JEYPORE TEAM_2">
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px;">
                     <label>Journey Route (From - To)</label>
                     <textarea id="vl-route" placeholder="e.g. Jeypore to Borigumma sub-station and return"></textarea>
                 </div>
@@ -152,15 +197,19 @@
                 </div>
             </section>
 
-            <!-- 3. PDF REPORTS (DYNAMIC CASCADING CIRCLE -> TEAM) -->
+            <!-- 3. PDF REPORTS -->
             <section id="tab-report" class="card hidden">
                 <h3>Official A4 PDF Downloads</h3>
                 <div class="grid-4" style="margin-top: 12px;">
                     <div>
                         <label>Circle</label>
                         <select id="pdf-circle">
-                            <option value="Jeypore">Jeypore Circle</option>
-                            <option value="Rayagada">Rayagada Circle</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                     <div>
@@ -190,21 +239,18 @@
                     </div>
                 </div>
 
-                <div style="display:flex; gap:12px; margin-top:20px;">
-                    <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (A4 Landscape)</button>
-                    <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log Book (Auto
-                        Portrait/Landscape)</button>
-                    <button id="btn-download-team-log" class="btn btn-outline-primary" type="button">
-                        Download Team Daily Log (PDF)
-                    </button>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px;">
+                    <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (PDF)</button>
+                    <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log (Circle Summary)</button>
+                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log (PDF)</button>
+                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊 Team Performance Report (PDF)</button>
                 </div>
             </section>
 
             <!-- 4. DOCUMENT ASSETS -->
             <section id="tab-assets" class="card hidden">
                 <h3>Document & Format Center</h3>
-                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official
-                    operational circulars.</p>
+                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official operational circulars.</p>
                 <table>
                     <thead>
                         <tr>
@@ -225,26 +271,25 @@
 
                 <h4>1. Register New Team & Assign Supervisor</h4>
                 <div class="grid-4" style="margin-top: 10px;">
-                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
-                            placeholder="e.g. Borigumma"></div>
-                    <div><label>Team Lead</label><input type="text" id="adm-team-lead"
-                            placeholder="Er. Sai Swaroop Mohanty"></div>
-                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
-                            placeholder="M.Hariprasad Maharshee"></div>
+                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name" placeholder="e.g. Borigumma"></div>
+                    <div><label>Team Lead</label><input type="text" id="adm-team-lead" placeholder="Er. Sai Swaroop Mohanty"></div>
+                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor" placeholder="M.Hariprasad Maharshee"></div>
                     <div>
                         <label>Circle</label>
                         <select id="adm-team-circle">
-                            <option value="Jeypore">Jeypore</option>
-                            <option value="Rayagada">Rayagada</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                 </div>
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
-                    <div><label>Login Username</label><input type="text" id="adm-team-user"
-                            placeholder="borigamma_team"></div>
+                    <div><label>Login Username</label><input type="text" id="adm-team-user" placeholder="borigamma_team"></div>
                     <div><label>Password</label><input type="text" id="adm-team-pass" placeholder="password123"></div>
-                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
-                            value="Executive Engg, Enforcement Cell, TPSODL"></div>
+                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr" value="Executive Engg, Enforcement Cell, TPSODL"></div>
                 </div>
                 <button class="btn primary" id="adm-create-team-btn">Create Team</button>
 
@@ -272,15 +317,18 @@
 
                 <hr style="margin: 20px 0;">
 
-                <!-- Team Directory Filtered by Circle -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h4>4. Team Accounts Directory (Active / Inactive)</h4>
+                    <h4>4. Team Accounts Directory</h4>
                     <div>
                         <label style="display:inline; margin-right:5px;">Filter Circle:</label>
                         <select id="dir-team-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
                             <option value="All Circles">All Circles</option>
-                            <option value="Jeypore">Jeypore</option>
-                            <option value="Rayagada">Rayagada</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                 </div>
@@ -288,15 +336,18 @@
 
                 <hr style="margin: 20px 0;">
 
-                <!-- Employee Directory Filtered by Circle -->
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h4>5. Employee Directory (Active / Inactive)</h4>
+                    <h4>5. Employee Directory</h4>
                     <div>
                         <label style="display:inline; margin-right:5px;">Filter Circle:</label>
                         <select id="dir-emp-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
                             <option value="All Circles">All Circles</option>
-                            <option value="Jeypore">Jeypore</option>
-                            <option value="Rayagada">Rayagada</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
                         </select>
                     </div>
                 </div>

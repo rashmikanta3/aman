@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual Environments
+.venv/
+
+# Environment variables & secrets (CRITICAL: Never commit credentials)
+.env
+
+# IDE & Editor specific settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing, type checking & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Generated runtime files & local report downloads
+*.pdf
+logs/
+*.log
+
+# Build & packaging artifacts (if applicable)
+build/
+dist/
+*.egg-info/

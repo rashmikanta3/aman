@@ -9,14 +9,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const $ = (id) => document.getElementById(id);
     const isAdmin = () => currentUser && currentUser.role === "admin";
 
-    // ---------- Helpers ----------
     function esc(v) {
         return String(v ?? "").replace(/[&<>"']/g, (c) => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
         }[c]));
     }
 
-    // Local date as YYYY-MM-DD
     function localToday() {
         const n = new Date();
         return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
@@ -32,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     return `${field}: ${d.msg}`;
                 }).join(", ");
             }
-        } catch (_) { /* ignore */ }
+        } catch (_) { }
         return fallback;
     }
 
@@ -75,7 +73,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // ---------- Vehicle KM auto-calc ----------
     function calcKM() {
         const s = parseInt($("vl-start-km")?.value) || 0;
         const e = parseInt($("vl-end-km")?.value) || 0;
@@ -86,7 +83,15 @@ document.addEventListener("DOMContentLoaded", () => {
     $("vl-start-km")?.addEventListener("input", calcKM);
     $("vl-end-km")?.addEventListener("input", calcKM);
 
-    // ---------- Login / Logout ----------
+    // Toggle merge team input
+    $("vl-op-mode")?.addEventListener("change", (e) => {
+        if (e.target.value === "Merged") {
+            $("vl-merge-box")?.classList.remove("hidden");
+        } else {
+            $("vl-merge-box")?.classList.add("hidden");
+        }
+    });
+
     if (currentUser) init();
 
     const loginForm = $("login-form");
@@ -121,7 +126,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    // ---------- Init ----------
     async function init() {
         $("login-view")?.classList.add("hidden");
         $("app-view")?.classList.remove("hidden");
@@ -171,7 +175,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // ---------- Cascading Circle -> Team ----------
     async function fetchTeams(circle, allStatus) {
         const params = new URLSearchParams();
         if (circle) params.set("circle", circle);
@@ -218,7 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
         fillTeamSelect($("adm-emp-team"), teams, null, true);
     }
 
-    // ---------- Attendance ----------
+    // Attendance
     async function loadDailyAttendance() {
         if (!$("att-date") || !$("att-tbody")) return;
         const params = new URLSearchParams({ date_str: $("att-date").value });
@@ -290,16 +293,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (confirm("Are you sure? Once locked, team logins cannot modify this date.")) saveAttendance(true);
     };
 
-    // ---------- Vehicle Log ----------
+    // Vehicle Log
     function getVlTeamId() {
         const v = currentUser.role === "team" ? currentUser.id : $("vl-filter-team")?.value;
         return v ? parseInt(v) : null;
     }
 
     function clearVlForm() {
-        ["vl-veh-no", "vl-supervisor", "vl-remarks", "vl-start-time", "vl-end-time", "vl-route"]
-            .forEach((id) => { if ($(id)) $(id).value = ""; });
-        ["vl-start-km", "vl-end-km", "vl-total-km"].forEach((id) => { if ($(id)) $(id).value = 0; });
+        ["vl-veh-no", "vl-supervisor", "vl-remarks", "vl-start-time", "vl-end-time", "vl-route", "vl-merged-team"]
+            .forEach((id) => { if ($(id))$(id).value = ""; });
+        ["vl-start-km", "vl-end-km", "vl-total-km", "vl-load-booked", "vl-amount-collected", "vl-dc-count"]
+            .forEach((id) => { if ($(id))$(id).value = 0; });
+        if ($("vl-tl-present")) $("vl-tl-present").value = "true";
+        if ($("vl-op-mode")) $("vl-op-mode").value = "Operated Independently";
+        $("vl-merge-box")?.classList.add("hidden");
     }
 
     async function loadDailyLog() {
@@ -324,7 +331,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if ($("lock-vl-btn")) $("lock-vl-btn").disabled = !canEdit;
 
         if ($("vl-veh-no")) $("vl-veh-no").value = data.vehicle_no || "";
-        // FIX: backend field is "supervisor" (was driver_name)
         if ($("vl-supervisor")) $("vl-supervisor").value = data.supervisor || "";
         if ($("vl-remarks")) $("vl-remarks").value = data.remarks || "";
         if ($("vl-start-time")) $("vl-start-time").value = data.start_time || "";
@@ -333,6 +339,21 @@ document.addEventListener("DOMContentLoaded", () => {
         if ($("vl-end-km")) $("vl-end-km").value = data.end_km || 0;
         if ($("vl-total-km")) $("vl-total-km").value = data.total_km || 0;
         if ($("vl-route")) $("vl-route").value = data.journey_route || "";
+
+        // Operational fields
+        if ($("vl-load-booked")) $("vl-load-booked").value = data.load_booked || 0;
+        if ($("vl-amount-collected")) $("vl-amount-collected").value = data.amount_collected || 0;
+        if ($("vl-dc-count")) $("vl-dc-count").value = data.number_of_dc || 0;
+        if ($("vl-tl-present")) $("vl-tl-present").value = data.team_leader_present !== false ? "true" : "false";
+        if ($("vl-op-mode")) {
+            $("vl-op-mode").value = data.operation_mode || "Operated Independently";
+            if (data.operation_mode === "Merged") {
+                $("vl-merge-box")?.classList.remove("hidden");
+            } else {
+                $("vl-merge-box")?.classList.add("hidden");
+            }
+        }
+        if ($("vl-merged-team")) $("vl-merged-team").value = data.merged_with_team || "";
     }
     if ($("vl-date")) $("vl-date").onchange = loadDailyLog;
 
@@ -345,7 +366,6 @@ document.addEventListener("DOMContentLoaded", () => {
             team_id: teamId,
             date: $("vl-date").value,
             vehicle_no: $("vl-veh-no")?.value.trim() || "",
-            // FIX: backend field is "supervisor" (was driver_name)
             supervisor: $("vl-supervisor")?.value.trim() || "",
             remarks: $("vl-remarks")?.value.trim() || "",
             start_time: $("vl-start-time")?.value || "",
@@ -354,6 +374,12 @@ document.addEventListener("DOMContentLoaded", () => {
             end_km: parseInt($("vl-end-km")?.value) || 0,
             total_km: parseInt($("vl-total-km")?.value) || 0,
             journey_route: $("vl-route")?.value.trim() || "",
+            load_booked: parseFloat($("vl-load-booked")?.value) || 0.0,
+            amount_collected: parseFloat($("vl-amount-collected")?.value) || 0.0,
+            number_of_dc: parseInt($("vl-dc-count")?.value) || 0,
+            team_leader_present: $("vl-tl-present")?.value === "true",
+            operation_mode: $("vl-op-mode")?.value || "Operated Independently",
+            merged_with_team: $("vl-merged-team")?.value.trim() || "",
             lock: isLock,
             is_admin: isAdmin()
         };
@@ -371,99 +397,115 @@ document.addEventListener("DOMContentLoaded", () => {
         if (confirm("Are you sure? Once locked, team logins cannot modify this log.")) saveVehicleLog(true);
     };
 
-    // ---------- PDF Reports ----------
-    // Function to download Team Daily Vehicle Log Book PDF (ReportLab)
-async function downloadTeamLogPdf() {
-    // 1. Determine active team ID (from filters, dropdowns, or logged-in team session)
-    let teamId = null;
-    const teamSelect = document.getElementById("log-team-select") 
-                    || document.getElementById("filter-team")
-                    || document.getElementById("report-team-select");
-    
-    if (teamSelect && teamSelect.value && teamSelect.value !== "all") {
-        teamId = teamSelect.value;
-    } else if (window.currentUser && window.currentUser.team_id) {
-        // Fallback for team portal login where team_id is stored in session
-        teamId = window.currentUser.team_id;
-    }
-
-    if (!teamId) {
-        alert("Please select a specific team to download the daily vehicle log book.");
-        return;
-    }
-
-    // 2. Determine Year and Month
-    const yearSelect = document.getElementById("log-year-select") 
-                    || document.getElementById("filter-year") 
-                    || document.getElementById("report-year-select");
-    const monthSelect = document.getElementById("log-month-select") 
-                     || document.getElementById("filter-month") 
-                     || document.getElementById("report-month-select");
-
-    const now = new Date();
-    const year = yearSelect && yearSelect.value ? yearSelect.value : now.getFullYear();
-    const month = monthSelect && monthSelect.value ? monthSelect.value : (now.getMonth() + 1);
-
-    // 3. UI Loading Feedback
-    const btn = document.getElementById("btn-download-team-log") 
-             || document.getElementById("btn-export-team-log-pdf");
-    const originalText = btn ? btn.innerHTML : "";
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating PDF...`;
-    }
-
-    try {
-        const queryParams = new URLSearchParams({
-            team_id: teamId,
-            year: year,
-            month: month
-        });
-
-        const response = await fetch(`/api/reports/download-team-log-pdf?${queryParams.toString()}`);
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({ detail: "Server error generating PDF" }));
-            throw new Error(errData.detail || "Failed to generate Team Log PDF");
+    // --- PDF Reports Engine ---
+    async function downloadPdfFile(url, fallbackFilename, triggerBtn) {
+        const originalText = triggerBtn ? triggerBtn.innerHTML : "";
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = "Generating PDF...";
         }
 
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
+        try {
+            const res = await fetch(url);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({ detail: "Server error generating PDF" }));
+                throw new Error(errData.detail || "Failed to generate PDF");
+            }
 
-        // Extract filename from header or construct default
-        const disposition = response.headers.get("Content-Disposition");
-        let filename = `Daily_Log_Team_${teamId}_${month}_${year}.pdf`;
-        if (disposition && disposition.includes("filename=")) {
-            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
-        }
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
 
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(blobUrl);
+            const disposition = res.headers.get("Content-Disposition");
+            let filename = fallbackFilename;
+            if (disposition && disposition.includes("filename=")) {
+                filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
+            }
 
-    } catch (error) {
-        console.error("Team Log PDF Download Error:", error);
-        alert(`Error: ${error.message}`);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalText;
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+            console.error("PDF Download Error:", err);
+            alert("Error downloading PDF: " + err.message);
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = originalText;
+            }
         }
     }
 
-}
-// Bind click handler for Team Log PDF download button
-const btnTeamLog = document.getElementById("btn-download-team-log") 
-                || document.getElementById("btn-export-team-log-pdf");
+    const btnTeamLog = $("btn-download-team-log");
+    if (btnTeamLog) {
+        btnTeamLog.onclick = () => {
+            let teamId = $("pdf-team")?.value;
+            const year = $("pdf-year")?.value || 2026;
+            const month = $("pdf-month")?.value || 10;
 
-if (btnTeamLog) {
-    btnTeamLog.addEventListener("click", downloadTeamLogPdf);
-}
-    // ---------- Admin Directories ----------
+            if (!teamId || teamId === "all" || teamId === "") {
+                if (currentUser && currentUser.role === "team") {
+                    teamId = currentUser.id;
+                } else {
+                    alert("Please select a specific Team Area from the 'Team Scope' dropdown.");
+                    return;
+                }
+            }
+
+            const url = `/api/reports/download-team-log-pdf?team_id=${encodeURIComponent(teamId)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+            downloadPdfFile(url, `Daily_Log_Team_${teamId}_${month}_${year}.pdf`, btnTeamLog);
+        };
+    }
+
+    const btnAttPdf = $("dl-att-pdf");
+    if (btnAttPdf) {
+        btnAttPdf.onclick = () => {
+            const circle = $("pdf-circle")?.value || "JEYPORE";
+            const teamId = $("pdf-team")?.value || "";
+            const year = $("pdf-year")?.value || 2026;
+            const month = $("pdf-month")?.value || 10;
+
+            let url = `/api/reports/download-attendance-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+            if (teamId && teamId !== "all" && teamId !== "") {
+                url += `&team_id=${encodeURIComponent(teamId)}`;
+            }
+
+            downloadPdfFile(url, `Form_D_Attendance_${circle}_${month}_${year}.pdf`, btnAttPdf);
+        };
+    }
+
+    const btnCircleLogPdf = $("dl-circle-log-pdf");
+    if (btnCircleLogPdf) {
+        btnCircleLogPdf.onclick = () => {
+            const circle = $("pdf-circle")?.value || "JEYPORE";
+            const year = $("pdf-year")?.value || 2026;
+            const month = $("pdf-month")?.value || 10;
+
+            const url = `/api/reports/download-circle-log-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+            downloadPdfFile(url, `Circle_Summary_${circle}_${month}_${year}.pdf`, btnCircleLogPdf);
+        };
+    }
+
+    const btnPerfPdf = $("dl-performance-pdf");
+    if (btnPerfPdf) {
+        btnPerfPdf.onclick = () => {
+            const circle = $("pdf-circle")?.value || "JEYPORE";
+            const teamId = $("pdf-team")?.value || "";
+            const year = $("pdf-year")?.value || 2026;
+            const month = $("pdf-month")?.value || 10;
+
+            let url = `/api/reports/download-performance-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+            if (teamId && teamId !== "all" && teamId !== "") {
+                url += `&team_id=${encodeURIComponent(teamId)}`;
+            }
+            downloadPdfFile(url, `Team_Performance_${circle}_${month}_${year}.pdf`, btnPerfPdf);
+        };
+    }
+
+    // Admin Directories
     async function loadAdminDirectories() {
         const teamCircle = $("dir-team-circle")?.value || "";
         const teams = await fetchTeams(teamCircle, true);
@@ -545,7 +587,6 @@ if (btnTeamLog) {
     if ($("dir-team-circle")) $("dir-team-circle").onchange = () => loadAdminDirectories().catch(console.error);
     if ($("dir-emp-circle")) $("dir-emp-circle").onchange = () => loadAdminDirectories().catch(console.error);
 
-    // ---------- Team Creation (payload matches backend TeamCreate) ----------
     const createTeamBtn = $("adm-create-team-btn");
     if (createTeamBtn) {
         createTeamBtn.onclick = async () => {
@@ -576,7 +617,7 @@ if (btnTeamLog) {
                 await api("/api/admin/teams", jsonOpts("POST", payload));
                 alert("Team registered successfully!");
                 ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass"]
-                    .forEach((id) => { if ($(id)) $(id).value = ""; });
+                    .forEach((id) => { if ($(id))$(id).value = ""; });
                 await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
                 await loadAdminDirectories();
             } catch (err) {
@@ -599,7 +640,7 @@ if (btnTeamLog) {
             try {
                 await api("/api/admin/employees", jsonOpts("POST", payload));
                 alert("Employee registered!");
-                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id)) $(id).value = ""; });
+                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id))$(id).value = ""; });
                 await loadAdminDirectories();
             } catch (err) {
                 alert("Could not create employee: " + err.message);
@@ -607,7 +648,7 @@ if (btnTeamLog) {
         };
     }
 
-    // ---------- Cloudflare R2 Document Assets ----------
+    // Cloudflare R2 Document Assets
     async function loadAssets() {
         const tbody = $("assets-tbody");
         if (!tbody) return;
@@ -660,8 +701,7 @@ if (btnTeamLog) {
         }
     }
 
-    // ---------- Asset Upload Form ----------
-    const uploadForm = $("upload-asset-form") || $("asset-upload-form");
+    const uploadForm = $("upload-asset-form");
     if (uploadForm) {
         uploadForm.addEventListener("submit", async (e) => {
             e.preventDefault();
