@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form,Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -19,6 +19,8 @@ from database import engine, get_db, SessionLocal, Base
 import boto3
 from botocore.config import Config
 from dotenv import load_dotenv
+import queries
+import reports_pdf
 # Load variables from .env file into environment
 load_dotenv()
 
@@ -300,187 +302,65 @@ def submit_vehicle_log(payload: VehicleLogCreate, db: Session = Depends(get_db))
 
 # Form D Attendance PDF Download
 # In main.py: inside download_attendance_pdf(...)
+@app.get("/api/reports/download-circle-log-pdf")
+def download_circle_log_pdf(
+    circle: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    rows, total_km = queries.fetch_circle_log_summary(db, circle, year, month)
+    pdf_bytes = reports_pdf.build_circle_log_pdf(circle, year, month, rows, total_km)
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=Circle_Summary_{circle}_{month}_{year}.pdf"}
+    )
 
 @app.get("/api/reports/download-attendance-pdf")
-def download_attendance_pdf(year: int, month: int, circle: str, team_id: Optional[int] = None, db: Session = Depends(get_db)):
-    _, num_days = calendar.monthrange(year, month)
-    emp_query = db.query(models.Employee).join(models.Team).filter(
-        models.Employee.is_active == True,
-        models.Team.is_active == True
-    )
-    if circle != "All Circles":
-        emp_query = emp_query.filter(models.Team.circle == circle)
-
-    if team_id:
-        team = db.query(models.Team).filter(models.Team.id == team_id).first()
-        emp_query = emp_query.filter(models.Employee.team_id == team_id)
-        team_name = team.team_name if team else "Team"
-        sign_role = "Team Leader"
-        sign_dept = f"Enforcement Cell, TPSODL, {circle} Circle"
-        sign_person = team.team_lead if team else ""
-    else:
-        team_name = "All Teams (Full Circle)"
-        sign_role = "Executive Engineer (Elect.)"
-        sign_dept = f"Vigilance & Enforcement Cell, TPSODL, {circle} Circle"
-        sign_person = ""
-
-    employees = emp_query.order_by(models.Team.circle, models.Team.team_name, models.Employee.id).all()
-    emp_ids = [e.id for e in employees]
-
-    records = db.query(models.Attendance).filter(
-        extract('year', models.Attendance.date) == year,
-        extract('month', models.Attendance.date) == month,
-        models.Attendance.employee_id.in_(emp_ids)
-    ).all() if emp_ids else []
-
-    att_map = {(r.employee_id, r.date.day): r.status for r in records}
+def download_attendance_pdf(
+    circle: str,
+    year: int,
+    month: int,
+    team_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    employees, attendance_map = queries.fetch_attendance_data(db, circle, year, month, team_id)
+    pdf_bytes = reports_pdf.build_form_d_pdf(circle, year, month, employees, attendance_map)
     
-    rows = []
-    # Initialize daily totals
-    daily_present_totals = {d: 0 for d in range(1, num_days + 1)}
-    grand_p = grand_l = grand_a = grand_wo = 0
-
-    for emp in employees:
-        days_data = {}
-        p_c = a_c = l_c = wo_c = 0
-        for d in range(1, num_days + 1):
-            st = att_map.get((emp.id, d), "")
-            days_data[d] = st
-            if st == "P": 
-                p_c += 1
-                daily_present_totals[d] += 1
-            elif st == "A": 
-                a_c += 1
-            elif st == "L": 
-                l_c += 1
-            elif st == "WO": 
-                wo_c += 1
-
-        grand_p += p_c
-        grand_l += l_c
-        grand_a += a_c
-        grand_wo += wo_c
-
-        rows.append({
-            "name": emp.name,
-            "designation": emp.designation,
-            "team_name": emp.team.team_name,
-            "days": days_data,
-            "summary": {"P": p_c, "L": l_c, "A": a_c, "WO": wo_c}
-        })
-
-    # Total Row Data Object
-    col_totals = {
-        "daily_present": daily_present_totals,
-        "grand_p": grand_p,
-        "grand_l": grand_l,
-        "grand_a": grand_a,
-        "grand_wo": grand_wo
-    }
-
-    html_out = templates.get_template("form_d_landscape.html").render({
-        "circle": circle,
-        "team_name": team_name,
-        "year": year,
-        "month": month,
-        "total_days": num_days,
-        "rows": rows,
-        "col_totals": col_totals,
-        "sign_role": sign_role,
-        "sign_dept": sign_dept,
-        "sign_person": sign_person
-    })
-
-    pdf_bytes = render_html_to_pdf(html_out)
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=Form_D_{circle}_{month}_{year}.pdf"}
-    )
-    
-# Vehicle Log Book PDF Download (Auto-Switches Between Portrait and Landscape)
-@app.get("/api/reports/download-circle-log-pdf")
-@app.get("/api/reports/download-logbook-pdf")
-def download_logbook_pdf(year: int, month: int, circle: str, team_id: Optional[int] = None, db: Session = Depends(get_db)):
-    month_names = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"]
-    month_name = month_names[month - 1]
-
-    # CASE 1: SPECIFIC TEAM -> A4 PORTRAIT DAY-BY-DAY
-    if team_id is not None and team_id > 0:
-        team = db.query(models.Team).filter(models.Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="Team not found")
-
-        logs = db.query(models.VehicleLog).filter(
-            models.VehicleLog.team_id == team_id,
-            extract('year', models.VehicleLog.date) == year,
-            extract('month', models.VehicleLog.date) == month
-        ).order_by(models.VehicleLog.date.asc()).all()
-
-        total_km = sum(l.total_km or 0 for l in logs)
-
-        html_out = templates.get_template("team_log_portrait.html").render({
-            "circle": team.circle,
-            "team_name": team.team_name,
-            "team_lead": team.team_lead or "-",
-            "supervisor": team.supervisor or "-",
-            "year": year,
-            "month_name": month_name,
-            "logs": logs,
-            "total_km": total_km
-        })
-        pdf_bytes = render_html_to_pdf(html_out)
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Daily_Log_{team.team_name}_{month_name}_{year}.pdf"}
-        )
-
-    # CASE 2: ALL TEAMS / FULL CIRCLE -> A4 LANDSCAPE CIRCLE SUMMARY
-    teams = db.query(models.Team).filter(
-        models.Team.circle == circle,
-        models.Team.is_active == True
-    ).order_by(models.Team.id).all()
-
-    vehicle_summary = []
-    grand_total_km = 0
-    for idx, t in enumerate(teams, start=1):
-        km_sum = db.query(func.sum(models.VehicleLog.total_km)).filter(
-            models.VehicleLog.team_id == t.id,
-            extract('year', models.VehicleLog.date) == year,
-            extract('month', models.VehicleLog.date) == month
-        ).scalar() or 0
-
-        latest_log = db.query(models.VehicleLog).filter(
-            models.VehicleLog.team_id == t.id,
-            extract('year', models.VehicleLog.date) == year,
-            extract('month', models.VehicleLog.date) == month
-        ).order_by(models.VehicleLog.date.desc()).first()
-
-        vehicle_summary.append({
-            "sl_no": idx,
-            "area": t.team_name,
-            "team_lead": t.team_lead or "-",
-            "supervisor": t.supervisor or "-",
-            "vehicle_no": latest_log.vehicle_no if (latest_log and latest_log.vehicle_no) else "N/A",
-            "total_monthly_km": km_sum
-        })
-        grand_total_km += km_sum
-
-    html_out = templates.get_template("circle_log_landscape.html").render({
-        "circle": circle,
-        "year": year,
-        "month_name": month_name,
-        "vehicle_summary": vehicle_summary,
-        "grand_total_km": grand_total_km
-    })
-    pdf_bytes = render_html_to_pdf(html_out)
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=Circle_Summary_{circle}_{month_name}_{year}.pdf"}
+        headers={"Content-Disposition": f"inline; filename=Form_D_Attendance_{circle}_{month}_{year}.pdf"}
     )
 
+@app.get("/api/reports/download-team-log-pdf")
+def download_team_log_pdf(
+    team_id: int,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    team = db.query(models.Team).filter(models.Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    daily_logs = queries.fetch_team_daily_logs(db, team.id, year, month)
+    pdf_bytes = reports_pdf.build_team_log_pdf(
+        team_name=team.team_name,
+        circle=team.circle,
+        team_lead=team.team_lead,
+        year=year,
+        month=month,
+        daily_logs=daily_logs
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=Daily_Log_{team.team_name}_{month}_{year}.pdf"}
+    )
 # Document Assets Manage
 
 @app.get("/api/assets")

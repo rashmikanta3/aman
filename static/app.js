@@ -372,29 +372,97 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // ---------- PDF Reports ----------
-    function reportParams(includeTeam) {
-        const params = new URLSearchParams({
-            year: $("pdf-year")?.value || new Date().getFullYear(),
-            month: $("pdf-month")?.value || (new Date().getMonth() + 1),
-            circle: $("pdf-circle")?.value || "All Circles"
+    // Function to download Team Daily Vehicle Log Book PDF (ReportLab)
+async function downloadTeamLogPdf() {
+    // 1. Determine active team ID (from filters, dropdowns, or logged-in team session)
+    let teamId = null;
+    const teamSelect = document.getElementById("log-team-select") 
+                    || document.getElementById("filter-team")
+                    || document.getElementById("report-team-select");
+    
+    if (teamSelect && teamSelect.value && teamSelect.value !== "all") {
+        teamId = teamSelect.value;
+    } else if (window.currentUser && window.currentUser.team_id) {
+        // Fallback for team portal login where team_id is stored in session
+        teamId = window.currentUser.team_id;
+    }
+
+    if (!teamId) {
+        alert("Please select a specific team to download the daily vehicle log book.");
+        return;
+    }
+
+    // 2. Determine Year and Month
+    const yearSelect = document.getElementById("log-year-select") 
+                    || document.getElementById("filter-year") 
+                    || document.getElementById("report-year-select");
+    const monthSelect = document.getElementById("log-month-select") 
+                     || document.getElementById("filter-month") 
+                     || document.getElementById("report-month-select");
+
+    const now = new Date();
+    const year = yearSelect && yearSelect.value ? yearSelect.value : now.getFullYear();
+    const month = monthSelect && monthSelect.value ? monthSelect.value : (now.getMonth() + 1);
+
+    // 3. UI Loading Feedback
+    const btn = document.getElementById("btn-download-team-log") 
+             || document.getElementById("btn-export-team-log-pdf");
+    const originalText = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating PDF...`;
+    }
+
+    try {
+        const queryParams = new URLSearchParams({
+            team_id: teamId,
+            year: year,
+            month: month
         });
-        const t = $("pdf-team")?.value;
-        if (includeTeam && t) params.set("team_id", t);
-        return params.toString();
+
+        const response = await fetch(`/api/reports/download-team-log-pdf?${queryParams.toString()}`);
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({ detail: "Server error generating PDF" }));
+            throw new Error(errData.detail || "Failed to generate Team Log PDF");
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        // Extract filename from header or construct default
+        const disposition = response.headers.get("Content-Disposition");
+        let filename = `Daily_Log_Team_${teamId}_${month}_${year}.pdf`;
+        if (disposition && disposition.includes("filename=")) {
+            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
+        }
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+        console.error("Team Log PDF Download Error:", error);
+        alert(`Error: ${error.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
 
-    if ($("dl-circle-log-pdf")) {
-        $("dl-circle-log-pdf").onclick = () => {
-            // Team-wise portrait log needs team_id, so include it here too
-            window.open(`/api/reports/download-circle-log-pdf?${reportParams(true)}`, "_blank");
-        };
-    }
-    if ($("dl-att-pdf")) {
-        $("dl-att-pdf").onclick = () => {
-            window.open(`/api/reports/download-attendance-pdf?${reportParams(true)}`, "_blank");
-        };
-    }
+}
+// Bind click handler for Team Log PDF download button
+const btnTeamLog = document.getElementById("btn-download-team-log") 
+                || document.getElementById("btn-export-team-log-pdf");
 
+if (btnTeamLog) {
+    btnTeamLog.addEventListener("click", downloadTeamLogPdf);
+}
     // ---------- Admin Directories ----------
     async function loadAdminDirectories() {
         const teamCircle = $("dir-team-circle")?.value || "";
