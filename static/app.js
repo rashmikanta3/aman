@@ -301,9 +301,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function clearVlForm() {
         ["vl-veh-no", "vl-supervisor", "vl-remarks", "vl-start-time", "vl-end-time", "vl-route", "vl-merged-team"]
-            .forEach((id) => { if ($(id))$(id).value = ""; });
+            .forEach((id) => { if ($(id)) $(id).value = ""; });
         ["vl-start-km", "vl-end-km", "vl-total-km", "vl-load-booked", "vl-amount-collected", "vl-dc-count"]
-            .forEach((id) => { if ($(id))$(id).value = 0; });
+            .forEach((id) => { if ($(id)) $(id).value = 0; });
         if ($("vl-tl-present")) $("vl-tl-present").value = "true";
         if ($("vl-op-mode")) $("vl-op-mode").value = "Operated Independently";
         $("vl-merge-box")?.classList.add("hidden");
@@ -551,18 +551,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let eHtml = `<table><thead><tr><th>Circle</th><th>Team</th><th>Emp Code</th><th>Employee Name</th><th>Designation</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
         (emps || []).forEach((e) => {
-            const tName = e.team ? (e.team.team_name || e.team.name) : "-";
+            // Check flat properties first, then nested team object fallback
+            const circleName = e.circle || (e.team ? e.team.circle : "") || "-";
+            const teamName = e.team_name || (e.team ? (e.team.team_name || e.team.name) : "") || "-";
+
             eHtml += `
         <tr>
-          <td>${e.team ? esc(e.team.circle) : "-"}</td>
-          <td><strong>${esc(tName)}</strong></td>
+          <td>${esc(circleName)}</td>
+          <td><strong>${esc(teamName)}</strong></td>
           <td>${esc(e.emp_code)}</td>
           <td>${esc(e.name)}</td>
           <td>${esc(e.designation)}</td>
-          <td><strong style="color:${e.is_active ? "#16a34a" : "#dc2626"}">${e.is_active ? "ACTIVE" : "INACTIVE"}</strong></td>
+          <td><strong style="color:${e.is_active !== false ? "#16a34a" : "#dc2626"}">${e.is_active !== false ? "ACTIVE" : "INACTIVE"}</strong></td>
           <td>
-            <button class="btn ${e.is_active ? "danger" : "success"} btn-toggle-emp" data-id="${e.id}" data-active="${e.is_active}">
-              ${e.is_active ? "Deactivate" : "Activate"}
+            <button class="btn ${e.is_active !== false ? "danger" : "success"} btn-toggle-emp" data-id="${e.id}" data-active="${e.is_active !== false}">
+              ${e.is_active !== false ? "Deactivate" : "Activate"}
             </button>
           </td>
         </tr>`;
@@ -617,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 await api("/api/admin/teams", jsonOpts("POST", payload));
                 alert("Team registered successfully!");
                 ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass"]
-                    .forEach((id) => { if ($(id))$(id).value = ""; });
+                    .forEach((id) => { if ($(id)) $(id).value = ""; });
                 await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
                 await loadAdminDirectories();
             } catch (err) {
@@ -640,7 +643,7 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 await api("/api/admin/employees", jsonOpts("POST", payload));
                 alert("Employee registered!");
-                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id))$(id).value = ""; });
+                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id)) $(id).value = ""; });
                 await loadAdminDirectories();
             } catch (err) {
                 alert("Could not create employee: " + err.message);

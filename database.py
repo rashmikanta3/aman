@@ -1,9 +1,11 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from dotenv import load_dotenv
+load_dotenv()
 
 # Uses SQLite by default or reads your PostgreSQL connection string
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(
     DATABASE_URL,

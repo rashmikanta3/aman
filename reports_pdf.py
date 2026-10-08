@@ -16,6 +16,49 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 SUPPORTED_CIRCLES = ["JEYPORE", "RAYAGADA", "BHANJANAGAR", "ASKA", "BERHAMPUR", "CITY"]
 
+# =========================================================================
+# DYNAMIC AGENCY CONFIGURATION BY CIRCLE
+# =========================================================================
+DEFAULT_AGENCY = {
+    "name": "AMMAN ASSOCIATED SERVICES PRIVATE LIMITED",
+    "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
+}
+
+# Add or update specific circles and their agency company/address details here
+CIRCLE_AGENCY_MAP: Dict[str, Dict[str, str]] = {
+    "JEYPORE": {
+        "name": "AMMAN ASSOCIATED SERVICES PRIVATE LIMITED",
+        "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
+    },
+    "RAYAGADA": {
+        "name": "AMMAN ASSOCIATED SERVICES PRIVATE LIMITED",
+                "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
+    },
+    "BHANJANAGAR": {
+        "name": "M/S NIRMAL KUMAR SAMANTARAY",
+        "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
+    },
+    "ASKA": {
+         "name": "M/S NIRMAL KUMAR SAMANTARAY",
+         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
+    },
+    "BERHAMPUR": {
+         "name": "M/S NIRMAL KUMAR SAMANTARAY",
+         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
+    },
+    "CITY": {
+         "name": "M/S NIRMAL KUMAR SAMANTARAY",
+         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
+    }
+}
+
+def get_agency_header(circle_name: Optional[str]) -> Dict[str, str]:
+    """Returns the company name and base address for a given circle."""
+    if not circle_name:
+        return DEFAULT_AGENCY
+    return CIRCLE_AGENCY_MAP.get(circle_name.strip().upper(), DEFAULT_AGENCY)
+
+
 def get_report_styles():
     styles = getSampleStyleSheet()
     return {
@@ -119,8 +162,10 @@ def build_circle_log_pdf(circle_name: str, year: int, month: int, rows: list, to
     st = get_report_styles()
     story = []
 
-    story.append(Paragraph("AMMAN ASSOCIATED SERVICES PRIVATE LIMITED", st['company']))
-    story.append(Paragraph("Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024", st['sub']))
+    # Dynamic agency header based on circle
+    agency = get_agency_header(circle_name)
+    story.append(Paragraph(agency["name"], st['company']))
+    story.append(Paragraph(agency["address"], st['sub']))
     story.append(Spacer(1, 4))
     story.append(Paragraph(f"VIGILANCE ENFORCEMENT CELL, {circle_name.upper()} CIRCLE", st['title']))
     story.append(Paragraph(f"MONTH OF {month_name} VEHICLE LOG BOOK TOTAL KILOMETER DETAILS - {year}", st['title']))
@@ -175,7 +220,7 @@ def build_circle_log_pdf(circle_name: str, year: int, month: int, rows: list, to
     ], colWidths=[674, 95])
     tot.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#9ca3af')),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
@@ -223,8 +268,12 @@ def build_form_d_pdf(
     st = get_report_styles()
     story = []
 
+    # Dynamic agency header based on circle
+    agency = get_agency_header(circle_name)
     scope_title = f"Team: {team_name} | " if team_name else ""
-    story.append(Paragraph("AMMAN ASSOCIATED SERVICES PRIVATE LIMITED", st['company']))
+    story.append(Paragraph(agency["name"], st['company']))
+    story.append(Paragraph(agency["address"], st['sub']))
+    story.append(Spacer(1, 2))
     story.append(Paragraph(f"FORM D - ATTENDANCE REGISTER FOR THE MONTH OF {month_name} {year}", st['title']))
     story.append(Paragraph(f"Circle: {circle_name.upper()} | {scope_title}Days in Month: {num_days}", st['sub']))
     story.append(Spacer(1, 6))
@@ -350,8 +399,10 @@ def build_team_log_pdf(team_name: str, circle: str, team_lead: str, year: int, m
     st = get_report_styles()
     story = []
 
-    story.append(Paragraph("AMMAN ASSOCIATED SERVICES PRIVATE LIMITED", st['company']))
-    story.append(Paragraph("Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024", st['sub']))
+    # Dynamic agency header based on circle
+    agency = get_agency_header(circle)
+    story.append(Paragraph(agency["name"], st['company']))
+    story.append(Paragraph(agency["address"], st['sub']))
     story.append(Spacer(1, 4))
     story.append(Paragraph(f"VIGILANCE ENFORCEMENT CELL, {circle.upper()} CIRCLE", st['title']))
     story.append(Paragraph(f"DAILY VEHICLE LOG BOOK - {team_name.upper()}", st['title']))
@@ -368,7 +419,6 @@ def build_team_log_pdf(team_name: str, circle: str, team_lead: str, year: int, m
     story.append(meta)
     story.append(Spacer(1, 6))
 
-    # Column 9 is Signature instead of Remarks
     headers = [
         Paragraph("<b>Date</b>", st['cell_bold_center']),
         Paragraph("<b>Vehicle No.</b>", st['cell_bold_center']),
@@ -464,7 +514,11 @@ def build_team_performance_pdf(
     st = get_report_styles()
     story = []
 
-    story.append(Paragraph("AMMAN ASSOCIATED SERVICES PRIVATE LIMITED", st['company']))
+    # Dynamic agency header based on circle
+    agency = get_agency_header(circle_name)
+    story.append(Paragraph(agency["name"], st['company']))
+    story.append(Paragraph(agency["address"], st['sub']))
+    story.append(Spacer(1, 4))
     story.append(Paragraph(f"TEAM-WISE OPERATIONAL PERFORMANCE REPORT - {month_name} {year}", st['title']))
     story.append(Paragraph(f"Enforcement & Vigilance Cell | Circle: {circle_name.upper()}", st['sub']))
     story.append(Spacer(1, 8))

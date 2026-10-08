@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -21,10 +21,23 @@ import models
 from database import engine, get_db, SessionLocal, Base
 import queries
 import reports_pdf
+# for lock the docs page
+import secrets
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+import mailer
+from datetime import timedelta
 
 load_dotenv()
 
-app = FastAPI(title="Operations, Reporting & Document Portal")
+app = FastAPI(
+    title="Operations, Reporting & Document Portal",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
+)
 
 BASE_DIR = Path(__file__).parent
 ASSETS_DIR = BASE_DIR / "assets"
@@ -59,6 +72,10 @@ def seed_admin():
         db.close()
 
 seed_admin()
+
+class ManualEmailRequest(BaseModel):
+    circle: str = "ALL"               # "ALL" or specific circle: "JEYPORE", "RAYAGADA", etc.
+    target_date: Optional[date] = None
 
 class LoginReq(BaseModel):
     username: str
@@ -112,6 +129,36 @@ class VehicleLogCreate(BaseModel):
     merged_with_team: Optional[str] = ""
     lock: bool = False
     is_admin: bool = False
+
+security = HTTPBasic()
+
+def get_current_admin(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
+    admin = db.query(models.Admin).filter(models.Admin.username == credentials.username).first()
+    # Check if admin exists and password matches
+    if not (admin and secrets.compare_digest(admin.password, credentials.password)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return admin
+
+@app.get("/docs", include_in_schema=False)
+def get_documentation(admin: models.Admin = Depends(get_current_admin)):
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json",
+        title=f"{app.title} - Swagger UI"
+    )
+
+@app.get("/api/openapi.json", include_in_schema=False)
+def get_open_api_endpoint(admin: models.Admin = Depends(get_current_admin)):
+    return JSONResponse(
+        get_openapi(
+            title=app.title,
+            version="1.0.0",
+            routes=app.routes,
+        )
+    )
 
 @app.post("/api/login")
 def login(creds: LoginReq, db: Session = Depends(get_db)):
@@ -181,10 +228,29 @@ def toggle_employee_active(emp_id: int, payload: StatusToggle, db: Session = Dep
 
 @app.get("/api/admin/employees/all")
 def list_all_employees(circle: Optional[str] = None, db: Session = Depends(get_db)):
-    q = db.query(models.Employee).join(models.Team)
+    # Perform an explicit join between Employee and Team
+    q = db.query(models.Employee, models.Team).join(
+        models.Team, models.Employee.team_id == models.Team.id
+    )
+    
     if circle and circle != "All Circles":
         q = q.filter(models.Team.circle.ilike(circle.strip()))
-    return q.order_by(models.Team.circle, models.Team.team_name, models.Employee.name).all()
+        
+    results = q.order_by(models.Team.circle, models.Team.team_name, models.Employee.name).all()
+
+    return [
+        {
+            "id": emp.id,
+            "emp_code": emp.emp_code,
+            "name": emp.name,
+            "designation": emp.designation,
+            "is_active": getattr(emp, "is_active", True),
+            "circle": team.circle,
+            "team_name": team.team_name or getattr(team, "name", "-"),
+            "team_id": emp.team_id,
+        }
+        for emp, team in results
+    ]
 
 @app.get("/api/attendance/day")
 def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: Optional[int] = None, db: Session = Depends(get_db)):
@@ -464,3 +530,15 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/")
 def serve_index():
     return FileResponse(STATIC_DIR / "index.html")
+
+@app.post("/api/admin/reports/send-email")
+def trigger_manual_email(payload: ManualEmailRequest, db: Session = Depends(get_db)):
+    target_date = payload.target_date or (date.today() - timedelta(days=1))
+    
+    try:
+        success = mailer.send_report_email(db, target_date, scope=payload.circle)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"No recipients configured for {payload.circle}")
+        return {"message": f"Daily report for {payload.circle} ({target_date}) successfully sent!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email dispatch error: {str(e)}")

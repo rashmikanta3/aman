@@ -3,7 +3,12 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Vigilance Portal - TPSODL</title>
+    <!-- Tab Icon (Favicon) -->
+    <link rel="icon" type="image/png" href="/static/logo.png">
+
+    <!-- Optional fallback for apple devices -->
+    <link rel="apple-touch-icon" href="/static/logo.png">
+    <title>Attendance_LogBook_Enforcemet - TPSODL</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -145,7 +150,8 @@
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
                     <div><label>Start KM</label><input type="number" id="vl-start-km" value="0"></div>
                     <div><label>End KM</label><input type="number" id="vl-end-km" value="0"></div>
-                    <div><label>Total KM Run (Auto)</label><input type="number" id="vl-total-km" readonly style="background:#f1f5f9; font-weight:bold;"></div>
+                    <div><label>Total KM Run (Auto)</label><input type="number" id="vl-total-km" readonly
+                            style="background:#f1f5f9; font-weight:bold;"></div>
                 </div>
 
                 <h4 style="margin: 18px 0 8px 0; color:#1e293b;">Daily Enforcement Performance & Operation Mode</h4>
@@ -242,15 +248,18 @@
                 <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px;">
                     <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (PDF)</button>
                     <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log (Circle Summary)</button>
-                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log (PDF)</button>
-                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊 Team Performance Report (PDF)</button>
+                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log
+                        (PDF)</button>
+                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊
+                        Team Performance Report (PDF)</button>
                 </div>
             </section>
 
             <!-- 4. DOCUMENT ASSETS -->
             <section id="tab-assets" class="card hidden">
                 <h3>Document & Format Center</h3>
-                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official operational circulars.</p>
+                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official
+                    operational circulars.</p>
                 <table>
                     <thead>
                         <tr>
@@ -271,9 +280,12 @@
 
                 <h4>1. Register New Team & Assign Supervisor</h4>
                 <div class="grid-4" style="margin-top: 10px;">
-                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name" placeholder="e.g. Borigumma"></div>
-                    <div><label>Team Lead</label><input type="text" id="adm-team-lead" placeholder="Er. Sai Swaroop Mohanty"></div>
-                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor" placeholder="M.Hariprasad Maharshee"></div>
+                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
+                            placeholder="e.g. Borigumma"></div>
+                    <div><label>Team Lead</label><input type="text" id="adm-team-lead"
+                            placeholder="Er. Sai Swaroop Mohanty"></div>
+                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
+                            placeholder="M.Hariprasad Maharshee"></div>
                     <div>
                         <label>Circle</label>
                         <select id="adm-team-circle">
@@ -287,9 +299,11 @@
                     </div>
                 </div>
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
-                    <div><label>Login Username</label><input type="text" id="adm-team-user" placeholder="borigamma_team"></div>
+                    <div><label>Login Username</label><input type="text" id="adm-team-user"
+                            placeholder="borigamma_team"></div>
                     <div><label>Password</label><input type="text" id="adm-team-pass" placeholder="password123"></div>
-                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr" value="Executive Engg, Enforcement Cell, TPSODL"></div>
+                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
+                            value="Executive Engg, Enforcement Cell, TPSODL"></div>
                 </div>
                 <button class="btn primary" id="adm-create-team-btn">Create Team</button>
 
@@ -317,8 +331,33 @@
 
                 <hr style="margin: 20px 0;">
 
+                <h4>4. Dispatch Daily Management Email</h4>
+                <div
+                    style="margin: 10px 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
+                    <label>Select Circle: </label>
+                    <select id="emailCircleSelect">
+                        <option value="ALL">All Circles (Consolidated)</option>
+                        <option value="JEYPORE">Jeypore</option>
+                        <option value="RAYAGADA">Rayagada</option>
+                        <option value="BHANJANAGAR">Bhanjanagar</option>
+                        <option value="ASKA">Aska</option>
+                        <option value="BERHAMPUR">Berhampur</option>
+                        <option value="CITY">City</option>
+                    </select>
+
+                    <label style="margin-left: 10px;">Date: </label>
+                    <input type="date" id="emailDateSelect">
+
+                    <button id="send-email-btn" onclick="sendManualReport()"
+                        style="margin-left: 10px; padding: 6px 12px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Send Email
+                    </button>
+                </div>
+
+                <hr style="margin: 20px 0;">
+
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h4>4. Team Accounts Directory</h4>
+                    <h4>5. Team Accounts Directory</h4>
                     <div>
                         <label style="display:inline; margin-right:5px;">Filter Circle:</label>
                         <select id="dir-team-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
@@ -337,7 +376,7 @@
                 <hr style="margin: 20px 0;">
 
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h4>5. Employee Directory</h4>
+                    <h4>6. Employee Directory</h4>
                     <div>
                         <label style="display:inline; margin-right:5px;">Filter Circle:</label>
                         <select id="dir-emp-circle" style="width: auto; display:inline-block; padding: 4px 8px;">
@@ -356,6 +395,42 @@
 
         </div>
     </div>
+
+    <script>
+    async function sendManualReport() {
+        const circle = document.getElementById("emailCircleSelect").value;
+        const targetDate = document.getElementById("emailDateSelect").value || null;
+        const btn = document.getElementById("send-email-btn");
+
+        // Set loading state
+        btn.disabled = true;
+        btn.textContent = "Sending mail...";
+        btn.style.opacity = "0.7";
+        btn.style.cursor = "not-allowed";
+
+        try {
+            const response = await fetch("/api/admin/reports/send-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ circle: circle, target_date: targetDate })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                alert(result.message);
+            } else {
+                alert("Failed: " + result.detail);
+            }
+        } catch (err) {
+            alert("Network error: " + err.message);
+        } finally {
+            // Restore button state after response
+            btn.disabled = false;
+            btn.textContent = "Send Email";
+            btn.style.opacity = "1";
+            btn.style.cursor = "pointer";
+        }
+    }
+</script>
 
     <script src="/static/app.js"></script>
 </body>
