@@ -1,42 +1,26 @@
 services:
-  aman_web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  aman_fastapi_app:
+    build: .
     container_name: aman_fastapi_app
-    restart: always
-    env_file:
-      - .env
-    environment:
-      # Connects directly to the independent postgres container
-      - DATABASE_URL=postgresql://rashmi:rashmi@postgres_mydb:5432/mydb
+    restart: unless-stopped
     expose:
       - "8000"
-    networks:
-      - app_shared_net
-      - aman_internal_net
+    env_file:
+      - .env
 
-  aman_caddy:
-    image: caddy:2-alpine
+  aman_proxy:
+    image: caddy:latest
     container_name: aman_proxy
-    restart: always
+    restart: unless-stopped
     ports:
-      # Separate port 8002 on host so it does NOT collide with Arcova's ports 80/443
       - "8002:8002"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - aman_caddy_data:/data
       - aman_caddy_config:/config
     depends_on:
-      - aman_web
-    networks:
-      - aman_internal_net
+      - aman_fastapi_app
 
 volumes:
   aman_caddy_data:
   aman_caddy_config:
-
-networks:
-  app_shared_net:
-    external: true
-  aman_internal_net:

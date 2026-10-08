@@ -1,19 +1,6 @@
-# Listens on port 8002 without touching Arcova's port 80/443
 :8002 {
-    encode gzip zstd
-
-    # Route incoming traffic directly to Aman FastAPI container
-    reverse_proxy aman_web:8000
-
-    # Increase maximum allowed body size for document uploads
     request_body {
         max_size 50MB
     }
-
-    # Security headers
-    header {
-        X-Frame-Options "SAMEORIGIN"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
+    reverse_proxy aman_fastapi_app:8000
 }
