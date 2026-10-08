@@ -1,7 +1,27 @@
-# Byte-compiled / optimized / DLL files
+# Environment and sensitive keys
+.env
+.env.*
+*.key
+*.pem
+
+# Python bytecode and virtual environments
 __pycache__/
 *.py[cod]
 *$py.class
+venv/
 .venv/
-.env
+env/
 
+# Database files
+*.sqlite3
+*.db
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Application generated temporary files / PDFs
+*.pdf
+/assets/temp/
