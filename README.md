@@ -44,7 +44,7 @@ A web portal for field operations teams. Teams submit daily attendance and vehic
 ## Project Structure
 
 ```
-aman/
+/
 ├── main.py                 # FastAPI app: routes, request models, auth, R2 upload, startup seeding
 ├── models.py               # SQLAlchemy models (Admin, Team, Employee, Attendance, VehicleLog, AssetFile)
 ├── database.py             # DB engine, session factory, get_db dependency
@@ -152,7 +152,7 @@ If your cloud provider has its own firewall or security list (Oracle, AWS, and s
 ### 4. Clone the repository
 
 ```bash
-git clone git@github.com:rashmikanta3/aman.git
+git git@github.com:rashmikanta3/field-ops-portal.git
 cd aman
 ```
 
