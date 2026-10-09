@@ -236,6 +236,5 @@ Known issues to fix before treating this as production-ready:
 - **Plaintext passwords:** admin and team passwords are stored and compared as plain text. Hash them (for example with `passlib`/`bcrypt`, already in `requirements.txt`).
 - **Default admin:** a default `admin` account is seeded on startup. Change its password right away and remove the hardcoded seed value from `main.py`.
 - **Unprotected admin endpoints:** routes under `/api/admin/*` and the report/download routes have no server-side authentication, and `is_admin` is sent by the client. Add token-based auth and enforce roles on the server.
-- **Hardcoded database credentials:** `docker-compose.yml` sets `DATABASE_URL` with a username and password in the file, overriding `.env`. Move it to `.env` and use a stronger password.
 - **Email recipients in code:** management recipient addresses are hardcoded in `mailer.py`. Consider moving them to configuration.
 - **Secrets:** never commit `.env`, R2 keys, or SMTP passwords.
