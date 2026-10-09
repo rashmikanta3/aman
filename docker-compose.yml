@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   aman_fastapi_app:
     build: .
@@ -7,9 +9,7 @@ services:
       - "8000"
     env_file:
       - .env
-    #environment:
-      # Connects directly to the independent postgres container
-      #- DATABASE_URL=postgresql://rashmi:rashmi@postgres_mydb:5432/mydb
+
   aman_proxy:
     image: caddy:latest
     container_name: aman_proxy
