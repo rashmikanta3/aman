@@ -6,6 +6,10 @@ load_dotenv()
 
 # Uses SQLite by default or reads your PostgreSQL connection string
 DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
+else:
+    raise ValueError("DATABASE_URL environment variable is not set or empty!")
 
 engine = create_engine(
     DATABASE_URL,
