@@ -701,16 +701,14 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
 # Email
 # ---------------------------------------------------------------------------
 @app.post("/api/admin/reports/send-email")
-def trigger_email_report(target_date: str = None, scope: str = "ALL", db: Session = Depends(get_db)):
+def trigger_email_report(payload: ManualEmailRequest, db: Session = Depends(get_db)):
     try:
-        if target_date:
-            report_date = datetime.strptime(target_date, "%Y-%m-%d").date()
-        else:
-            report_date = date.today()
+        report_date = payload.target_date or date.today()
+        scope = (payload.circle or "ALL").strip().upper()
 
         success = mailer.send_report_email(db=db, target_date=report_date, scope=scope)
         if not success:
-            raise HTTPException(status_code=400, detail="Failed to dispatch email or no recipients configured.")
+            raise HTTPException(status_code=400, detail=f"Failed to dispatch email or no recipients configured for '{scope}'.")
             
         return {"message": f"Report email dispatched successfully for {scope} ({report_date})"}
     except Exception as e:
