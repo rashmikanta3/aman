@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, status
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, status, Request, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func
 from pydantic import BaseModel
@@ -542,3 +542,94 @@ def trigger_manual_email(payload: ManualEmailRequest, db: Session = Depends(get_
         return {"message": f"Daily report for {payload.circle} ({target_date}) successfully sent!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email dispatch error: {str(e)}")
+from sqlalchemy import and_
+
+@app.get("/api/verification/summary")
+def get_verification_summary(
+    target_date: date = Query(...),
+    circle: Optional[str] = Query(None),
+    team_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    # -------------------------------------------------------------------------
+    # 1. Fetch ALL Active Employees & Teams (LEFT JOIN Attendance on target_date)
+    # -------------------------------------------------------------------------
+    att_query = (
+        db.query(models.Employee, models.Team, models.Attendance)
+        .join(models.Team, models.Employee.team_id == models.Team.id)
+        .outerjoin(
+            models.Attendance,
+            and_(
+                models.Attendance.employee_id == models.Employee.id,
+                models.Attendance.date == target_date
+            )
+        )
+        .filter(
+            models.Employee.is_active == True,
+            models.Team.is_active == True
+        )
+    )
+
+    if circle and circle not in ["ALL", "All Circles"]:
+        att_query = att_query.filter(models.Team.circle.ilike(circle.strip()))
+    if team_name and team_name not in ["ALL", "All Teams"]:
+        att_query = att_query.filter(models.Team.team_name.ilike(team_name.strip()))
+
+    employee_attendance_results = att_query.order_by(
+        models.Team.circle, models.Team.team_name, models.Employee.name
+    ).all()
+
+    # -------------------------------------------------------------------------
+    # 2. Fetch Vehicle Log Records (LEFT JOIN Team)
+    # -------------------------------------------------------------------------
+    team_query = db.query(models.Team, models.VehicleLog).outerjoin(
+        models.VehicleLog,
+        and_(
+            models.VehicleLog.team_id == models.Team.id,
+            models.VehicleLog.date == target_date
+        )
+    ).filter(models.Team.is_active == True)
+
+    if circle and circle not in ["ALL", "All Circles"]:
+        team_query = team_query.filter(models.Team.circle.ilike(circle.strip()))
+    if team_name and team_name not in ["ALL", "All Teams"]:
+        team_query = team_query.filter(models.Team.team_name.ilike(team_name.strip()))
+
+    log_results = team_query.order_by(models.Team.circle, models.Team.team_name).all()
+
+    # -------------------------------------------------------------------------
+    # 3. Serialize Results
+    # -------------------------------------------------------------------------
+    return {
+        "date": target_date.isoformat(),
+        "attendance": [
+            {
+                "emp_code": emp.emp_code,
+                "emp_name": emp.name,
+                "designation": emp.designation,
+                "team_name": team.team_name,
+                "circle": team.circle,
+                # If record exists, show status; if not, show "Not Punched"
+                "status": att.status if att else "Not Punched",
+                "is_punched": bool(att),
+                "is_locked": att.is_locked if att else False,
+            }
+            for emp, team, att in employee_attendance_results
+        ],
+        "logs": [
+            {
+                "team_name": team.team_name,
+                "circle": team.circle,
+                "vehicle_no": log.vehicle_no if (log and log.vehicle_no) else "-",
+                "route": log.journey_route if (log and log.journey_route) else "-",
+                "total_km": log.total_km if (log and log.total_km is not None) else "-",
+                "load_booked": getattr(log, "load_booked", "-") if log else "-",
+                "amount_collected": getattr(log, "amount_collected", "-") if log else "-",
+                "dc_count": getattr(log, "number_of_dc", "-") if log else "-",
+                "supervisor": (log.supervisor if log and log.supervisor else team.supervisor) or "-",
+                "is_submitted": bool(log),
+                "is_locked": log.is_locked if log else False,
+            }
+            for team, log in log_results
+        ]
+    }

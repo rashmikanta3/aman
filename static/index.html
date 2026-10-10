@@ -41,6 +41,7 @@
                 <button class="btn secondary" id="btn-tab-report">PDF Reports</button>
                 <button class="btn secondary" id="btn-tab-assets">Document Center</button>
                 <button class="btn secondary" id="btn-tab-admin">Admin Control</button>
+                <button class="btn secondary" id="btn-tab-verify">Verification</button>
                 <button class="btn danger" id="btn-logout">Logout</button>
             </div>
         </header>
@@ -392,45 +393,138 @@
                 </div>
                 <div id="adm-emp-list" style="margin-top: 10px;"></div>
             </section>
+            <!-- 6. VERIFICATION PANEL -->
+            <section id="tab-verify" class="card hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3>Daily Entry Verification</h3>
+                </div>
 
+                <!-- Filters -->
+                <div class="grid-4" style="margin-top: 10px;">
+                    <div>
+                        <label>Select Date</label>
+                        <input type="date" id="verify-date">
+                    </div>
+                    <div>
+                        <label>Filter Circle</label>
+                        <select id="verify-filter-circle">
+                            <option value="ALL">All Circles</option>
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Filter Team</label>
+                        <select id="verify-filter-team">
+                            <option value="ALL">All Teams</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:flex-end;">
+                        <button class="btn primary" id="btn-run-verify" style="width: 100%;">🔍 View Records</button>
+                    </div>
+                </div>
+
+                <!-- Inner Sub-Tabs -->
+                <div style="margin-top: 20px; border-bottom: 2px solid #e2e8f0; display:flex; gap: 8px;">
+                    <button id="subtab-verify-att" class="btn secondary active" style="border-radius: 4px 4px 0 0;">
+                        📋 Attendance List (<span id="count-verify-att">0</span>)
+                    </button>
+                    <button id="subtab-verify-log" class="btn secondary" style="border-radius: 4px 4px 0 0;">
+                        🚗 Log Book Entries (<span id="count-verify-log">0</span>)
+                    </button>
+                </div>
+
+                <!-- Inner View 1: Attendance Table -->
+                <div id="verify-view-att" style="margin-top: 12px; overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">Sl</th>
+                                <th>Emp Code</th>
+                                <th>Employee Name</th>
+                                <th>Designation</th>
+                                <th>Assigned Team</th>
+                                <th>Circle</th>
+                                <th style="width: 120px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="verify-att-tbody">
+                            <tr>
+                                <td colspan="7" style="text-align:center; color:#94a3b8;">Select date and click "View
+                                    Records"</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Inner View 2: Log Book Table -->
+                <div id="verify-view-log" class="hidden" style="margin-top: 12px; overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Team</th>
+                                <th>Vehicle No</th>
+                                <th>Route / Journey</th>
+                                <th>KM Run</th>
+                                <th>Load (KW)</th>
+                                <th>Collection (₹)</th>
+                                <th>DC Count</th>
+                                <th>Supervisor</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="verify-log-tbody">
+                            <tr>
+                                <td colspan="9" style="text-align:center; color:#94a3b8;">Select date and click "View
+                                    Records"</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </div>
 
+
     <script>
-    async function sendManualReport() {
-        const circle = document.getElementById("emailCircleSelect").value;
-        const targetDate = document.getElementById("emailDateSelect").value || null;
-        const btn = document.getElementById("send-email-btn");
+        async function sendManualReport() {
+            const circle = document.getElementById("emailCircleSelect").value;
+            const targetDate = document.getElementById("emailDateSelect").value || null;
+            const btn = document.getElementById("send-email-btn");
 
-        // Set loading state
-        btn.disabled = true;
-        btn.textContent = "Sending mail...";
-        btn.style.opacity = "0.7";
-        btn.style.cursor = "not-allowed";
+            // Set loading state
+            btn.disabled = true;
+            btn.textContent = "Sending mail...";
+            btn.style.opacity = "0.7";
+            btn.style.cursor = "not-allowed";
 
-        try {
-            const response = await fetch("/api/admin/reports/send-email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ circle: circle, target_date: targetDate })
-            });
-            const result = await response.json();
-            if (response.ok) {
-                alert(result.message);
-            } else {
-                alert("Failed: " + result.detail);
+            try {
+                const response = await fetch("/api/admin/reports/send-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ circle: circle, target_date: targetDate })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message);
+                } else {
+                    alert("Failed: " + result.detail);
+                }
+            } catch (err) {
+                alert("Network error: " + err.message);
+            } finally {
+                // Restore button state after response
+                btn.disabled = false;
+                btn.textContent = "Send Email";
+                btn.style.opacity = "1";
+                btn.style.cursor = "pointer";
             }
-        } catch (err) {
-            alert("Network error: " + err.message);
-        } finally {
-            // Restore button state after response
-            btn.disabled = false;
-            btn.textContent = "Send Email";
-            btn.style.opacity = "1";
-            btn.style.cursor = "pointer";
         }
-    }
-</script>
+    </script>
 
     <script src="/static/app.js"></script>
 </body>

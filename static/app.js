@@ -160,7 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function setupTabs() {
-        const tabs = ["att", "log", "report", "assets", "admin"];
+        const tabs = ["att", "log", "report", "assets", "admin", "verify"];
         tabs.forEach((tab) => {
             const btn = $(`btn-tab-${tab}`);
             if (!btn) return;
@@ -171,9 +171,146 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 $(`tab-${tab}`)?.classList.remove("hidden");
                 btn.classList.add("active");
+                if (tab === "verify") initVerificationTab();
             };
         });
     }
+
+    // --- Verification tab ---
+    // Called each time the tab is opened: default the date and load team choices.
+    function initVerificationTab() {
+        const dateInput = $("verify-date");
+        if (dateInput && !dateInput.value) dateInput.value = localToday();
+        populateVerifyTeams();
+    }
+
+    async function populateVerifyTeams() {
+        const teamSelect = $("verify-filter-team");
+        if (!teamSelect) return;
+        const circle = $("verify-filter-circle")?.value || "";
+        const previous = teamSelect.value;
+        teamSelect.innerHTML = `<option value="ALL">All Teams</option>`;
+
+        try {
+            const teams = await fetchTeams(circle);
+            (teams || []).forEach((t) => {
+                const name = t.team_name || t.name;
+                if (!name) return;
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                teamSelect.appendChild(opt);
+            });
+            if (previous && Array.from(teamSelect.options).some((o) => o.value === previous)) {
+                teamSelect.value = previous;
+            }
+        } catch (e) {
+            console.error("Failed to load teams for verification filter", e);
+        }
+    }
+    $("verify-filter-circle")?.addEventListener("change", populateVerifyTeams);
+
+    // Sub-tabs: Attendance / Log Book
+    const subtabAtt = $("subtab-verify-att");
+    const subtabLog = $("subtab-verify-log");
+    const viewAtt = $("verify-view-att");
+    const viewLog = $("verify-view-log");
+
+    subtabAtt?.addEventListener("click", () => {
+        subtabAtt.classList.add("active");
+        subtabLog?.classList.remove("active");
+        viewAtt?.classList.remove("hidden");
+        viewLog?.classList.add("hidden");
+    });
+
+    subtabLog?.addEventListener("click", () => {
+        subtabLog.classList.add("active");
+        subtabAtt?.classList.remove("active");
+        viewLog?.classList.remove("hidden");
+        viewAtt?.classList.add("hidden");
+    });
+
+    async function loadVerificationData() {
+        const dateVal = $("verify-date")?.value;
+        const circleVal = $("verify-filter-circle")?.value || "";
+        const teamVal = $("verify-filter-team")?.value || "ALL";
+
+        if (!dateVal) {
+            alert("Please choose a date.");
+            return;
+        }
+
+        const btn = $("btn-run-verify");
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Loading...";
+        }
+
+        try {
+            const url = `/api/verification/summary?target_date=${encodeURIComponent(dateVal)}&circle=${encodeURIComponent(circleVal)}&team_name=${encodeURIComponent(teamVal)}`;
+            const data = await api(url);
+            const attendance = data.attendance || [];
+            const logs = data.logs || [];
+
+            // 1. Attendance table
+            if ($("count-verify-att")) $("count-verify-att").textContent = attendance.length;
+            const attTbody = $("verify-att-tbody");
+            if (attTbody) {
+                if (attendance.length === 0) {
+                    attTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding: 20px;">No attendance found for this date.</td></tr>`;
+                } else {
+                    attTbody.innerHTML = attendance.map((r, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><strong>${esc(r.emp_code)}</strong></td>
+                    <td>${esc(r.emp_name)}</td>
+                    <td>${esc(r.designation)}</td>
+                    <td>${esc(r.team_name)}</td>
+                    <td>${esc(r.circle || "-")}</td>
+                    <td>
+                        <span class="badge ${r.status === "P" || r.status === "Present" ? "role" : "danger"}" style="padding: 2px 8px;">
+                            ${esc(r.status)}
+                        </span>
+                    </td>
+                </tr>`).join("");
+                }
+            }
+
+            // 2. Log book table
+            if ($("count-verify-log")) $("count-verify-log").textContent = logs.length;
+            const logTbody = $("verify-log-tbody");
+            if (logTbody) {
+                if (logs.length === 0) {
+                    logTbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding: 20px;">No log book entries found for this date.</td></tr>`;
+                } else {
+                    logTbody.innerHTML = logs.map((l) => `
+                <tr>
+                    <td><strong>${esc(l.team_name)}</strong></td>
+                    <td>${esc(l.vehicle_no || "-")}</td>
+                    <td style="max-width: 250px; font-size: 12px;">${esc(l.route || "-")}</td>
+                    <td><strong>${esc(l.total_km)} KM</strong></td>
+                    <td>${esc(l.load_booked)} KW</td>
+                    <td>₹${esc(l.amount_collected)}</td>
+                    <td>${esc(l.dc_count)}</td>
+                    <td>${esc(l.supervisor || "-")}</td>
+                    <td>
+                        <span class="badge ${l.is_locked ? "danger" : "role"}">
+                            ${l.is_locked ? "Locked" : "Draft"}
+                        </span>
+                    </td>
+                </tr>`).join("");
+                }
+            }
+        } catch (err) {
+            alert("Failed to load records: " + err.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "🔍 View Records";
+            }
+        }
+    }
+    $("btn-run-verify")?.addEventListener("click", loadVerificationData);
 
     async function fetchTeams(circle, allStatus) {
         const params = new URLSearchParams();
