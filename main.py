@@ -2,15 +2,19 @@ import os
 import io
 import shutil
 import calendar
-from datetime import date, datetime
+import secrets
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response, status, Request, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse,HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from sqlalchemy.orm import Session
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, and_
 from pydantic import BaseModel
 
 import boto3
@@ -21,14 +25,7 @@ import models
 from database import engine, get_db, SessionLocal, Base
 import queries
 import reports_pdf
-# for lock the docs page
-import secrets
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
 import mailer
-from datetime import timedelta
 
 load_dotenv()
 
@@ -53,6 +50,7 @@ R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
 R2_BUCKET = os.getenv("R2_BUCKET", "aman")
 R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
 
+
 s3_client = boto3.client(
     's3',
     endpoint_url=R2_ENDPOINT,
@@ -61,6 +59,7 @@ s3_client = boto3.client(
     region_name='auto',
     config=Config(signature_version='s3v4')
 )
+
 
 def seed_admin():
     db = SessionLocal()
@@ -71,15 +70,22 @@ def seed_admin():
     finally:
         db.close()
 
+
 seed_admin()
 
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
 class ManualEmailRequest(BaseModel):
     circle: str = "ALL"               # "ALL" or specific circle: "JEYPORE", "RAYAGADA", etc.
     target_date: Optional[date] = None
 
+
 class LoginReq(BaseModel):
     username: str
     password: str
+
 
 class TeamCreate(BaseModel):
     team_name: str
@@ -90,24 +96,29 @@ class TeamCreate(BaseModel):
     password: str
     reporting_manager: str
 
+
 class EmpCreate(BaseModel):
     emp_code: str
     name: str
     designation: str
     team_id: int
 
+
 class StatusToggle(BaseModel):
     is_active: bool
+
 
 class AttItem(BaseModel):
     employee_id: int
     status: str
+
 
 class AttSubmitReq(BaseModel):
     date: date
     records: List[AttItem]
     lock: bool = False
     is_admin: bool = False
+
 
 class VehicleLogCreate(BaseModel):
     team_id: int
@@ -130,11 +141,32 @@ class VehicleLogCreate(BaseModel):
     lock: bool = False
     is_admin: bool = False
 
+
+class TeamDetailUpdate(BaseModel):
+    name: str                           # Team Name (Area)
+    team_lead: Optional[str] = None
+    supervisor_name: Optional[str] = None
+    circle: Optional[str] = None
+    login_username: Optional[str] = None
+    reporting_manager: Optional[str] = None
+    password: Optional[str] = None
+
+
+class EmployeeDetailUpdate(BaseModel):
+    emp_code: str
+    full_name: str
+    designation: Optional[str] = None
+    team_id: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# Docs protection
+# ---------------------------------------------------------------------------
 security = HTTPBasic()
+
 
 def get_current_admin(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
     admin = db.query(models.Admin).filter(models.Admin.username == credentials.username).first()
-    # Check if admin exists and password matches
     if not (admin and secrets.compare_digest(admin.password, credentials.password)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -143,12 +175,14 @@ def get_current_admin(credentials: HTTPBasicCredentials = Depends(security), db:
         )
     return admin
 
+
 @app.get("/docs", include_in_schema=False)
 def get_documentation(admin: models.Admin = Depends(get_current_admin)):
     return get_swagger_ui_html(
         openapi_url="/api/openapi.json",
         title=f"{app.title} - Swagger UI"
     )
+
 
 @app.get("/api/openapi.json", include_in_schema=False)
 def get_open_api_endpoint(admin: models.Admin = Depends(get_current_admin)):
@@ -160,13 +194,23 @@ def get_open_api_endpoint(admin: models.Admin = Depends(get_current_admin)):
         )
     )
 
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 @app.post("/api/login")
 def login(creds: LoginReq, db: Session = Depends(get_db)):
-    admin = db.query(models.Admin).filter(models.Admin.username == creds.username, models.Admin.password == creds.password).first()
+    admin = db.query(models.Admin).filter(
+        models.Admin.username == creds.username,
+        models.Admin.password == creds.password
+    ).first()
     if admin:
         return {"role": "admin", "id": admin.id, "display_name": admin.full_name, "circle": "All Circles"}
 
-    team = db.query(models.Team).filter(models.Team.username == creds.username, models.Team.password == creds.password).first()
+    team = db.query(models.Team).filter(
+        models.Team.username == creds.username,
+        models.Team.password == creds.password
+    ).first()
     if team:
         if not team.is_active:
             raise HTTPException(status_code=403, detail="Team account deactivated by administrator.")
@@ -181,6 +225,10 @@ def login(creds: LoginReq, db: Session = Depends(get_db)):
         }
     raise HTTPException(status_code=400, detail="Invalid username or password")
 
+
+# ---------------------------------------------------------------------------
+# Teams
+# ---------------------------------------------------------------------------
 @app.post("/api/admin/teams")
 def create_team(t: TeamCreate, db: Session = Depends(get_db)):
     if db.query(models.Team).filter(models.Team.username == t.username).first():
@@ -191,6 +239,7 @@ def create_team(t: TeamCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Team created successfully"}
 
+
 @app.put("/api/admin/teams/{team_id}/toggle-active")
 def toggle_team_active(team_id: int, payload: StatusToggle, db: Session = Depends(get_db)):
     team = db.query(models.Team).filter(models.Team.id == team_id).first()
@@ -200,15 +249,74 @@ def toggle_team_active(team_id: int, payload: StatusToggle, db: Session = Depend
     db.commit()
     return {"message": f"Team marked as {'Active' if payload.is_active else 'Inactive'}"}
 
+
 @app.get("/api/teams")
 def list_teams(circle: Optional[str] = None, all_status: bool = False, db: Session = Depends(get_db)):
     q = db.query(models.Team)
     if not all_status:
         q = q.filter(models.Team.is_active == True)
-    if circle and circle != "All Circles":
+    if circle and circle not in ("All Circles", "ALL"):
         q = q.filter(models.Team.circle.ilike(circle.strip()))
     return q.order_by(models.Team.circle, models.Team.team_name).all()
 
+
+@app.get("/api/admin/team/search")
+def search_team_details(query: str, db: Session = Depends(get_db)):
+    like = f"%{query.strip()}%"
+    team = db.query(models.Team).filter(
+        models.Team.team_name.ilike(like) | models.Team.username.ilike(like)
+    ).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team record not found")
+
+    return {
+        "id": team.id,
+        "name": team.team_name or "",
+        "team_lead": team.team_lead or "",
+        "supervisor_name": team.supervisor or "",
+        "circle": team.circle or "",
+        "login_username": team.username or "",
+        "reporting_manager": team.reporting_manager or "",
+        "password": team.password or "",
+    }
+
+
+@app.put("/api/admin/team/{team_id}")
+def update_team_details(team_id: int, payload: TeamDetailUpdate, db: Session = Depends(get_db)):
+    team = db.query(models.Team).filter(models.Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team record not found")
+
+    new_name = payload.name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Team name is required")
+    if db.query(models.Team).filter(models.Team.team_name == new_name, models.Team.id != team_id).first():
+        raise HTTPException(status_code=400, detail="Team name already exists")
+
+    new_user = (payload.login_username or "").strip()
+    if new_user and db.query(models.Team).filter(
+        models.Team.username == new_user, models.Team.id != team_id
+    ).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    team.team_name = new_name
+    team.team_lead = (payload.team_lead or "").strip() or None
+    team.supervisor = (payload.supervisor_name or "").strip() or None
+    if payload.circle:
+        team.circle = payload.circle.strip()
+    if new_user:
+        team.username = new_user
+    team.reporting_manager = (payload.reporting_manager or "").strip() or None
+    if payload.password:
+        team.password = payload.password.strip()
+
+    db.commit()
+    return {"message": "Team details updated successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Employees
+# ---------------------------------------------------------------------------
 @app.post("/api/admin/employees")
 def create_employee(emp: EmpCreate, db: Session = Depends(get_db)):
     if db.query(models.Employee).filter(models.Employee.emp_code == emp.emp_code).first():
@@ -216,6 +324,7 @@ def create_employee(emp: EmpCreate, db: Session = Depends(get_db)):
     db.add(models.Employee(**emp.dict()))
     db.commit()
     return {"message": "Employee registered successfully"}
+
 
 @app.put("/api/admin/employees/{emp_id}/toggle-active")
 def toggle_employee_active(emp_id: int, payload: StatusToggle, db: Session = Depends(get_db)):
@@ -226,16 +335,16 @@ def toggle_employee_active(emp_id: int, payload: StatusToggle, db: Session = Dep
     db.commit()
     return {"message": f"Employee marked as {'Active' if payload.is_active else 'Inactive'}"}
 
+
 @app.get("/api/admin/employees/all")
 def list_all_employees(circle: Optional[str] = None, db: Session = Depends(get_db)):
-    # Perform an explicit join between Employee and Team
     q = db.query(models.Employee, models.Team).join(
         models.Team, models.Employee.team_id == models.Team.id
     )
-    
-    if circle and circle != "All Circles":
+
+    if circle and circle not in ("All Circles", "ALL"):
         q = q.filter(models.Team.circle.ilike(circle.strip()))
-        
+
     results = q.order_by(models.Team.circle, models.Team.team_name, models.Employee.name).all()
 
     return [
@@ -246,12 +355,59 @@ def list_all_employees(circle: Optional[str] = None, db: Session = Depends(get_d
             "designation": emp.designation,
             "is_active": getattr(emp, "is_active", True),
             "circle": team.circle,
-            "team_name": team.team_name or getattr(team, "name", "-"),
+            "team_name": team.team_name,
             "team_id": emp.team_id,
         }
         for emp, team in results
     ]
 
+
+@app.get("/api/admin/employee/search")
+def search_employee_details(emp_code: str, db: Session = Depends(get_db)):
+    emp = db.query(models.Employee).filter(
+        models.Employee.emp_code.ilike(emp_code.strip())
+    ).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return {
+        "id": emp.id,
+        "emp_code": emp.emp_code,
+        "full_name": emp.name,
+        "designation": emp.designation or "",
+        "team_id": emp.team_id,
+    }
+
+
+@app.put("/api/admin/employee/{emp_pk_id}")
+def update_employee_details(emp_pk_id: int, payload: EmployeeDetailUpdate, db: Session = Depends(get_db)):
+    emp = db.query(models.Employee).filter(models.Employee.id == emp_pk_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    code = payload.emp_code.strip()
+    if not code or not payload.full_name.strip():
+        raise HTTPException(status_code=400, detail="Employee code and name are required")
+
+    if db.query(models.Employee).filter(
+        models.Employee.emp_code == code,
+        models.Employee.id != emp_pk_id
+    ).first():
+        raise HTTPException(status_code=400, detail="Employee code already in use by another person")
+
+    emp.emp_code = code
+    emp.name = payload.full_name.strip()
+    emp.designation = (payload.designation or "").strip() or None
+    if payload.team_id:
+        emp.team_id = payload.team_id
+
+    db.commit()
+    return {"message": "Employee details updated successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Attendance
+# ---------------------------------------------------------------------------
 @app.get("/api/attendance/day")
 def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: Optional[int] = None, db: Session = Depends(get_db)):
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -259,7 +415,7 @@ def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: O
         models.Employee.is_active == True,
         models.Team.is_active == True
     )
-    if circle and circle != "All Circles":
+    if circle and circle not in ("All Circles", "ALL"):
         q = q.filter(models.Team.circle.ilike(circle.strip()))
     if team_id:
         q = q.filter(models.Employee.team_id == team_id)
@@ -287,6 +443,7 @@ def get_daily_attendance(date_str: str, circle: Optional[str] = None, team_id: O
         } for e in employees]
     }
 
+
 @app.post("/api/attendance/submit")
 def submit_attendance(payload: AttSubmitReq, db: Session = Depends(get_db)):
     for r in payload.records:
@@ -306,6 +463,10 @@ def submit_attendance(payload: AttSubmitReq, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Attendance saved successfully"}
 
+
+# ---------------------------------------------------------------------------
+# Vehicle log
+# ---------------------------------------------------------------------------
 @app.get("/api/vehicle-log/day")
 def get_vehicle_log_day(date_str: str, team_id: int, db: Session = Depends(get_db)):
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -352,6 +513,7 @@ def get_vehicle_log_day(date_str: str, team_id: int, db: Session = Depends(get_d
         "is_locked": False
     }
 
+
 @app.post("/api/vehicle-log/submit")
 def submit_vehicle_log(payload: VehicleLogCreate, db: Session = Depends(get_db)):
     existing = db.query(models.VehicleLog).filter(
@@ -375,8 +537,10 @@ def submit_vehicle_log(payload: VehicleLogCreate, db: Session = Depends(get_db))
     db.commit()
     return {"message": "Vehicle log saved successfully"}
 
-# --- PDF Reports ---
 
+# ---------------------------------------------------------------------------
+# PDF reports
+# ---------------------------------------------------------------------------
 @app.get("/api/reports/download-circle-log-pdf")
 def download_circle_log_pdf(
     circle: str,
@@ -386,12 +550,13 @@ def download_circle_log_pdf(
 ):
     rows, total_km = queries.fetch_circle_log_summary(db, circle, year, month)
     pdf_bytes = reports_pdf.build_circle_log_pdf(circle, year, month, rows, total_km)
-    
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename=Circle_Summary_{circle}_{month}_{year}.pdf"}
     )
+
 
 @app.get("/api/reports/download-attendance-pdf")
 def download_attendance_pdf(
@@ -407,7 +572,7 @@ def download_attendance_pdf(
     if team_id:
         team = db.query(models.Team).filter(models.Team.id == team_id).first()
         if team:
-            team_lead = team.team_lead or team.team_leader
+            team_lead = team.team_lead
             team_name = team.team_name
 
     employees, attendance_map = queries.fetch_attendance_data(db, circle, year, month, team_id)
@@ -428,6 +593,7 @@ def download_attendance_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename={filename_prefix}_{month}_{year}.pdf"}
     )
+
 
 @app.get("/api/reports/download-team-log-pdf")
 def download_team_log_pdf(
@@ -456,6 +622,7 @@ def download_team_log_pdf(
         headers={"Content-Disposition": f"inline; filename=Daily_Log_{team.team_name}_{month}_{year}.pdf"}
     )
 
+
 @app.get("/api/reports/download-performance-pdf")
 def download_performance_pdf(
     circle: str,
@@ -473,11 +640,14 @@ def download_performance_pdf(
         headers={"Content-Disposition": f"inline; filename=Team_Performance_{circle}_{month}_{year}.pdf"}
     )
 
-# --- Assets ---
 
+# ---------------------------------------------------------------------------
+# Assets (Cloudflare R2)
+# ---------------------------------------------------------------------------
 @app.get("/api/assets")
 def list_assets(db: Session = Depends(get_db)):
     return db.query(models.AssetFile).order_by(models.AssetFile.uploaded_at.desc()).all()
+
 
 @app.post("/api/admin/assets/upload")
 async def upload_asset(
@@ -509,6 +679,7 @@ async def upload_asset(
     db.refresh(asset)
     return {"message": "Document uploaded successfully to Cloudflare R2!", "file_url": public_file_url}
 
+
 @app.delete("/api/admin/assets/{asset_id}")
 def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     asset = db.query(models.AssetFile).filter(models.AssetFile.id == asset_id).first()
@@ -525,25 +696,30 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Document deleted successfully"}
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-@app.get("/")
-def serve_index():
-    return FileResponse(STATIC_DIR / "index.html")
-
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
 @app.post("/api/admin/reports/send-email")
-def trigger_manual_email(payload: ManualEmailRequest, db: Session = Depends(get_db)):
-    target_date = payload.target_date or (date.today() - timedelta(days=1))
-    
+def trigger_email_report(target_date: str = None, scope: str = "ALL", db: Session = Depends(get_db)):
     try:
-        success = mailer.send_report_email(db, target_date, scope=payload.circle)
+        if target_date:
+            report_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        else:
+            report_date = date.today()
+
+        success = mailer.send_report_email(db=db, target_date=report_date, scope=scope)
         if not success:
-            raise HTTPException(status_code=400, detail=f"No recipients configured for {payload.circle}")
-        return {"message": f"Daily report for {payload.circle} ({target_date}) successfully sent!"}
+            raise HTTPException(status_code=400, detail="Failed to dispatch email or no recipients configured.")
+            
+        return {"message": f"Report email dispatched successfully for {scope} ({report_date})"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email dispatch error: {str(e)}")
-from sqlalchemy import and_
 
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
 @app.get("/api/verification/summary")
 def get_verification_summary(
     target_date: date = Query(...),
@@ -551,9 +727,7 @@ def get_verification_summary(
     team_name: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    # -------------------------------------------------------------------------
-    # 1. Fetch ALL Active Employees & Teams (LEFT JOIN Attendance on target_date)
-    # -------------------------------------------------------------------------
+    # 1. All active employees (LEFT JOIN attendance on target_date)
     att_query = (
         db.query(models.Employee, models.Team, models.Attendance)
         .join(models.Team, models.Employee.team_id == models.Team.id)
@@ -579,9 +753,7 @@ def get_verification_summary(
         models.Team.circle, models.Team.team_name, models.Employee.name
     ).all()
 
-    # -------------------------------------------------------------------------
-    # 2. Fetch Vehicle Log Records (LEFT JOIN Team)
-    # -------------------------------------------------------------------------
+    # 2. All active teams (LEFT JOIN vehicle log on target_date)
     team_query = db.query(models.Team, models.VehicleLog).outerjoin(
         models.VehicleLog,
         and_(
@@ -597,9 +769,7 @@ def get_verification_summary(
 
     log_results = team_query.order_by(models.Team.circle, models.Team.team_name).all()
 
-    # -------------------------------------------------------------------------
-    # 3. Serialize Results
-    # -------------------------------------------------------------------------
+    # 3. Serialize
     return {
         "date": target_date.isoformat(),
         "attendance": [
@@ -609,7 +779,6 @@ def get_verification_summary(
                 "designation": emp.designation,
                 "team_name": team.team_name,
                 "circle": team.circle,
-                # If record exists, show status; if not, show "Not Punched"
                 "status": att.status if att else "Not Punched",
                 "is_punched": bool(att),
                 "is_locked": att.is_locked if att else False,
@@ -633,3 +802,14 @@ def get_verification_summary(
             for team, log in log_results
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# Static files + index (keep these last)
+# ---------------------------------------------------------------------------
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/")
+def serve_index():
+    return FileResponse(STATIC_DIR / "index.html")

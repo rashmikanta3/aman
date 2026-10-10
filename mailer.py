@@ -1,5 +1,6 @@
 import os
 import smtplib
+from pathlib import Path
 from datetime import date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -7,45 +8,23 @@ from email.mime.application import MIMEApplication
 from typing import List, Dict
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+
 import models
 import queries
 import reports_pdf
-load_dotenv()
+
+ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 SUPPORTED_CIRCLES = ["JEYPORE", "RAYAGADA", "BHANJANAGAR", "ASKA", "BERHAMPUR", "CITY"]
 
-# Add actual management emails here:
-MANAGEMENT_EMAILS: Dict[str, List[str]] = {
-    # Receives consolidated report for ALL circles
-    "ALL": ["ansuman.sahu@tpsouthernodisha.com","sai.mohanty@tpsouthernodisha.com"
-    ],
-    # Receives ONLY Jeypore report & PDF
-    "JEYPORE": [
-        "rashmikanta.behera@tpsouthernodisha.com"
-    ],
-    # Receives ONLY Rayagada report & PDF
-    "RAYAGADA": [
-        "prakash.s@tpsouthernodisha.com"
-    ],
-    "BHANJANAGAR": [
-        "bishnucharan.mahanta@tpsouthernodisha.com"
-    ],
-    "ASKA": [
-        "swarupranjan.singh@tpsouthernodisha.com"
-    ],
-    "BERHAMPUR": [
-        "ankit.panda01@tpsouthernodisha.com"
-    ],
-    "CITY": [
-        "sai.mohanty@tpsouthernodisha.com"
-    ]
-}
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.zoho.in")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
-SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
+def parse_env_emails(var_name: str) -> List[str]:
+    """Reads a comma-separated list of emails from .env into a clean Python list."""
+    raw = os.getenv(var_name, "")
+    if not raw or not raw.strip():
+        return []
+    return [e.strip() for e in raw.split(",") if e.strip()]
 
 
 def fetch_circle_day_stats(db: Session, circle_name: str, target_date: date):
@@ -99,11 +78,30 @@ def fetch_circle_day_stats(db: Session, circle_name: str, target_date: date):
 
 
 def send_report_email(db: Session, target_date: date, scope: str = "ALL") -> bool:
+    # Explicitly reload variables fresh from .env upon every call
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
+
     scope_upper = scope.strip().upper()
-    recipients = MANAGEMENT_EMAILS.get(scope_upper, [])
+    recipients = parse_env_emails(f"EMAILS_{scope_upper}")
+    
     if not recipients:
-        print(f"No recipients configured for: {scope_upper}")
+        print(f"No recipients configured in .env for scope: EMAILS_{scope_upper}")
         return False
+
+    raw_host = os.getenv("SMTP_HOST") or os.getenv("SMTP_SERVER") or "smtp.zoho.in"
+    smtp_host = raw_host.strip().replace("https://", "").replace("http://", "").replace("ssl://", "").strip()
+
+    try:
+        smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    except (ValueError, TypeError):
+        smtp_port = 465
+
+    smtp_user = (os.getenv("SMTP_USER") or "").strip().strip('"').strip("'")
+    smtp_pass = (os.getenv("SMTP_PASS") or os.getenv("SMTP_PASSWORD") or "").strip().strip('"').strip("'")
+    smtp_from = (os.getenv("SMTP_FROM") or smtp_user).strip().strip('"').strip("'")
+
+    if not smtp_user or not smtp_pass:
+        raise ValueError("SMTP_USER or SMTP_PASSWORD is not set in the environment variables.")
 
     circles = SUPPORTED_CIRCLES if scope_upper == "ALL" else [scope_upper]
     stats_list = [fetch_circle_day_stats(db, c, target_date) for c in circles]
@@ -167,7 +165,7 @@ def send_report_email(db: Session, target_date: date, scope: str = "ALL") -> boo
 
     msg = MIMEMultipart()
     msg["Subject"] = f"[{scope_upper}] Daily Performance Report - {target_date.strftime('%d-%b-%Y')}"
-    msg["From"] = SMTP_FROM
+    msg["From"] = smtp_from
     msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html_content, "html"))
 
@@ -182,8 +180,9 @@ def send_report_email(db: Session, target_date: date, scope: str = "ALL") -> boo
         except Exception as e:
             print(f"Error attaching PDF for circle {c}: {e}")
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(SMTP_FROM, recipients, msg.as_string())
+    # Dispatch via secure SSL connection
+    with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_from, recipients, msg.as_string())
 
     return True

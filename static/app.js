@@ -1,4 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // =====================================================================
+    // CORE HELPERS
+    // =====================================================================
+    const DEFAULT_MANAGER = "Executive Engg, Enforcement Cell, TPSODL";
+    const ALL_CIRCLE_VALUES = ["", "ALL", "All Circles"];
+
     let currentUser = null;
     try {
         currentUser = JSON.parse(localStorage.getItem("dyn_user") || "null");
@@ -7,7 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const $ = (id) => document.getElementById(id);
-    const isAdmin = () => currentUser && currentUser.role === "admin";
+    const isAdmin = () => !!currentUser && currentUser.role === "admin";
+    const isTeam = () => !!currentUser && currentUser.role === "team";
+    const normCircle = (c) => (ALL_CIRCLE_VALUES.includes(c || "") ? "" : c);
 
     function esc(v) {
         return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -20,6 +28,30 @@ document.addEventListener("DOMContentLoaded", () => {
         return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
     }
 
+    function setVal(id, value) {
+        const el = $(id);
+        if (el) el.value = value ?? "";
+    }
+
+    function show(el, visible) {
+        if (!el) return;
+        el.classList.toggle("hidden", !visible);
+        el.style.display = visible ? "inline-block" : "none";
+    }
+
+    // Swap a button's label while a request is running, restore it afterwards
+    function setBusy(btn, busy, busyText) {
+        if (!btn) return;
+        if (busy) {
+            btn.dataset.origHtml = btn.innerHTML;
+            btn.innerHTML = busyText;
+            btn.disabled = true;
+        } else {
+            btn.innerHTML = btn.dataset.origHtml || btn.innerHTML;
+            btn.disabled = false;
+        }
+    }
+
     async function errorMessage(res, fallback) {
         try {
             const j = await res.json();
@@ -30,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     return `${field}: ${d.msg}`;
                 }).join(", ");
             }
-        } catch (_) { }
+        } catch (_) { /* ignore */ }
         return fallback;
     }
 
@@ -73,27 +105,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function calcKM() {
-        const s = parseInt($("vl-start-km")?.value) || 0;
-        const e = parseInt($("vl-end-km")?.value) || 0;
-        if ($("vl-total-km")) {
-            $("vl-total-km").value = e >= s ? e - s : 0;
-        }
+    async function fetchTeams(circle, allStatus) {
+        const params = new URLSearchParams();
+        const c = normCircle(circle);
+        if (c) params.set("circle", c);
+        if (allStatus) params.set("all_status", "true");
+        return api(`/api/teams?${params.toString()}`);
     }
-    $("vl-start-km")?.addEventListener("input", calcKM);
-    $("vl-end-km")?.addEventListener("input", calcKM);
 
-    // Toggle merge team input
-    $("vl-op-mode")?.addEventListener("change", (e) => {
-        if (e.target.value === "Merged") {
-            $("vl-merge-box")?.classList.remove("hidden");
-        } else {
-            $("vl-merge-box")?.classList.add("hidden");
-        }
-    });
-
-    if (currentUser) init();
-
+    // =====================================================================
+    // LOGIN / LOGOUT
+    // =====================================================================
     const loginForm = $("login-form");
     if (loginForm) {
         loginForm.onsubmit = async (e) => {
@@ -105,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     password: $("login-pass").value.trim()
                 }));
                 localStorage.setItem("dyn_user", JSON.stringify(currentUser));
-                if (errBox) errBox.classList.add("hidden");
+                errBox?.classList.add("hidden");
                 init();
             } catch (err) {
                 if (errBox) {
@@ -118,19 +140,22 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    const logoutBtn = $("btn-logout");
-    if (logoutBtn) {
-        logoutBtn.onclick = () => {
+    if ($("btn-logout")) {
+        $("btn-logout").onclick = () => {
             localStorage.removeItem("dyn_user");
             location.reload();
         };
     }
 
+    // =====================================================================
+    // INIT + TABS
+    // =====================================================================
     async function init() {
         $("login-view")?.classList.add("hidden");
         $("app-view")?.classList.remove("hidden");
 
-        if ($("display-team-name")) $("display-team-name").textContent = currentUser.display_name || currentUser.username;
+        setVal("display-team-name", "");
+        if ($("display-team-name")) $("display-team-name").textContent = currentUser.display_name || currentUser.username || "";
         if ($("display-circle")) $("display-circle").textContent = currentUser.circle || "";
         if ($("display-role")) $("display-role").textContent = (currentUser.role || "user").toUpperCase();
 
@@ -142,10 +167,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const today = localToday();
-        if ($("att-date")) $("att-date").value = today;
-        if ($("vl-date")) $("vl-date").value = today;
+        setVal("att-date", today);
+        setVal("vl-date", today);
+        setVal("verify-date", today);
+        setVal("emailDateSelect", today);
 
         setupTabs();
+
+        // Team users are locked to their own circle in the report tab
+        if (isTeam() && $("pdf-circle") && currentUser.circle) {
+            $("pdf-circle").value = currentUser.circle;
+            $("pdf-circle").disabled = true;
+        }
 
         try {
             await syncReportTeams();
@@ -176,161 +209,15 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Verification tab ---
-    // Called each time the tab is opened: default the date and load team choices.
-    function initVerificationTab() {
-        const dateInput = $("verify-date");
-        if (dateInput && !dateInput.value) dateInput.value = localToday();
-        populateVerifyTeams();
-    }
-
-    async function populateVerifyTeams() {
-        const teamSelect = $("verify-filter-team");
-        if (!teamSelect) return;
-        const circle = $("verify-filter-circle")?.value || "";
-        const previous = teamSelect.value;
-        teamSelect.innerHTML = `<option value="ALL">All Teams</option>`;
-
-        try {
-            const teams = await fetchTeams(circle);
-            (teams || []).forEach((t) => {
-                const name = t.team_name || t.name;
-                if (!name) return;
-                const opt = document.createElement("option");
-                opt.value = name;
-                opt.textContent = name;
-                teamSelect.appendChild(opt);
-            });
-            if (previous && Array.from(teamSelect.options).some((o) => o.value === previous)) {
-                teamSelect.value = previous;
-            }
-        } catch (e) {
-            console.error("Failed to load teams for verification filter", e);
-        }
-    }
-    $("verify-filter-circle")?.addEventListener("change", populateVerifyTeams);
-
-    // Sub-tabs: Attendance / Log Book
-    const subtabAtt = $("subtab-verify-att");
-    const subtabLog = $("subtab-verify-log");
-    const viewAtt = $("verify-view-att");
-    const viewLog = $("verify-view-log");
-
-    subtabAtt?.addEventListener("click", () => {
-        subtabAtt.classList.add("active");
-        subtabLog?.classList.remove("active");
-        viewAtt?.classList.remove("hidden");
-        viewLog?.classList.add("hidden");
-    });
-
-    subtabLog?.addEventListener("click", () => {
-        subtabLog.classList.add("active");
-        subtabAtt?.classList.remove("active");
-        viewLog?.classList.remove("hidden");
-        viewAtt?.classList.add("hidden");
-    });
-
-    async function loadVerificationData() {
-        const dateVal = $("verify-date")?.value;
-        const circleVal = $("verify-filter-circle")?.value || "";
-        const teamVal = $("verify-filter-team")?.value || "ALL";
-
-        if (!dateVal) {
-            alert("Please choose a date.");
-            return;
-        }
-
-        const btn = $("btn-run-verify");
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = "Loading...";
-        }
-
-        try {
-            const url = `/api/verification/summary?target_date=${encodeURIComponent(dateVal)}&circle=${encodeURIComponent(circleVal)}&team_name=${encodeURIComponent(teamVal)}`;
-            const data = await api(url);
-            const attendance = data.attendance || [];
-            const logs = data.logs || [];
-
-            // 1. Attendance table
-            if ($("count-verify-att")) $("count-verify-att").textContent = attendance.length;
-            const attTbody = $("verify-att-tbody");
-            if (attTbody) {
-                if (attendance.length === 0) {
-                    attTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding: 20px;">No attendance found for this date.</td></tr>`;
-                } else {
-                    attTbody.innerHTML = attendance.map((r, i) => `
-                <tr>
-                    <td>${i + 1}</td>
-                    <td><strong>${esc(r.emp_code)}</strong></td>
-                    <td>${esc(r.emp_name)}</td>
-                    <td>${esc(r.designation)}</td>
-                    <td>${esc(r.team_name)}</td>
-                    <td>${esc(r.circle || "-")}</td>
-                    <td>
-                        <span class="badge ${r.status === "P" || r.status === "Present" ? "role" : "danger"}" style="padding: 2px 8px;">
-                            ${esc(r.status)}
-                        </span>
-                    </td>
-                </tr>`).join("");
-                }
-            }
-
-            // 2. Log book table
-            if ($("count-verify-log")) $("count-verify-log").textContent = logs.length;
-            const logTbody = $("verify-log-tbody");
-            if (logTbody) {
-                if (logs.length === 0) {
-                    logTbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding: 20px;">No log book entries found for this date.</td></tr>`;
-                } else {
-                    logTbody.innerHTML = logs.map((l) => `
-                <tr>
-                    <td><strong>${esc(l.team_name)}</strong></td>
-                    <td>${esc(l.vehicle_no || "-")}</td>
-                    <td style="max-width: 250px; font-size: 12px;">${esc(l.route || "-")}</td>
-                    <td><strong>${esc(l.total_km)} KM</strong></td>
-                    <td>${esc(l.load_booked)} KW</td>
-                    <td>₹${esc(l.amount_collected)}</td>
-                    <td>${esc(l.dc_count)}</td>
-                    <td>${esc(l.supervisor || "-")}</td>
-                    <td>
-                        <span class="badge ${l.is_locked ? "danger" : "role"}">
-                            ${l.is_locked ? "Locked" : "Draft"}
-                        </span>
-                    </td>
-                </tr>`).join("");
-                }
-            }
-        } catch (err) {
-            alert("Failed to load records: " + err.message);
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = "🔍 View Records";
-            }
-        }
-    }
-    $("btn-run-verify")?.addEventListener("click", loadVerificationData);
-
-    async function fetchTeams(circle, allStatus) {
-        const params = new URLSearchParams();
-        if (circle) params.set("circle", circle);
-        if (allStatus) params.set("all_status", "true");
-        return api(`/api/teams?${params.toString()}`);
-    }
-
-    async function syncReportTeams() {
-        if (!$("pdf-circle") || !$("pdf-team")) return;
-        const teams = await fetchTeams($("pdf-circle").value);
-        fillTeamSelect($("pdf-team"), teams, "All Teams (Circle Summary)");
-    }
-    if ($("pdf-circle")) $("pdf-circle").onchange = () => syncReportTeams().catch(console.error);
-
+    // =====================================================================
+    // DAILY ATTENDANCE
+    // =====================================================================
     async function syncAttTeams() {
         if (!$("att-filter-circle") || !$("att-filter-team")) return;
         const teams = await fetchTeams($("att-filter-circle").value);
         fillTeamSelect($("att-filter-team"), teams, "All Teams in Circle");
     }
+
     if ($("att-filter-circle")) {
         $("att-filter-circle").onchange = async () => {
             await syncAttTeams();
@@ -338,35 +225,16 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
     if ($("att-filter-team")) $("att-filter-team").onchange = loadDailyAttendance;
+    if ($("att-date")) $("att-date").onchange = loadDailyAttendance;
 
-    async function syncVlTeams() {
-        if (!$("vl-filter-circle") || !$("vl-filter-team")) return;
-        const teams = await fetchTeams($("vl-filter-circle").value);
-        fillTeamSelect($("vl-filter-team"), teams, null);
-    }
-    if ($("vl-filter-circle")) {
-        $("vl-filter-circle").onchange = async () => {
-            await syncVlTeams();
-            loadDailyLog();
-        };
-    }
-    if ($("vl-filter-team")) $("vl-filter-team").onchange = loadDailyLog;
-
-    async function syncAdminEmpTeams() {
-        if (!$("adm-emp-team")) return;
-        const teams = await fetchTeams("", true);
-        fillTeamSelect($("adm-emp-team"), teams, null, true);
-    }
-
-    // Attendance
     async function loadDailyAttendance() {
-        if (!$("att-date") || !$("att-tbody")) return;
+        if (!$("att-date") || !$("att-tbody") || !$("att-date").value) return;
         const params = new URLSearchParams({ date_str: $("att-date").value });
 
-        if (currentUser.role === "team") {
+        if (isTeam()) {
             params.set("team_id", currentUser.id);
         } else {
-            const c = $("att-filter-circle")?.value;
+            const c = normCircle($("att-filter-circle")?.value);
             const t = $("att-filter-team")?.value;
             if (c) params.set("circle", c);
             if (t) params.set("team_id", t);
@@ -403,7 +271,6 @@ document.addEventListener("DOMContentLoaded", () => {
             tbody.appendChild(tr);
         });
     }
-    if ($("att-date")) $("att-date").onchange = loadDailyAttendance;
 
     async function saveAttendance(isLock) {
         const records = Array.from(document.querySelectorAll("#att-tbody tr[data-emp]")).map((r) => ({
@@ -425,37 +292,69 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("Save failed: " + err.message);
         }
     }
-    if ($("save-att-btn")) $("save-att-btn").onclick = () => saveAttendance(false);
-    if ($("lock-att-btn")) $("lock-att-btn").onclick = () => {
-        if (confirm("Are you sure? Once locked, team logins cannot modify this date.")) saveAttendance(true);
-    };
 
-    // Vehicle Log
+    if ($("save-att-btn")) $("save-att-btn").onclick = () => saveAttendance(false);
+    if ($("lock-att-btn")) {
+        $("lock-att-btn").onclick = () => {
+            if (confirm("Are you sure? Once locked, team logins cannot modify this date.")) saveAttendance(true);
+        };
+    }
+
+    // =====================================================================
+    // VEHICLE LOG
+    // =====================================================================
+    function calcKM() {
+        const s = parseInt($("vl-start-km")?.value) || 0;
+        const e = parseInt($("vl-end-km")?.value) || 0;
+        if ($("vl-total-km")) $("vl-total-km").value = e >= s ? e - s : 0;
+    }
+    $("vl-start-km")?.addEventListener("input", calcKM);
+    $("vl-end-km")?.addEventListener("input", calcKM);
+
+    $("vl-op-mode")?.addEventListener("change", (e) => {
+        $("vl-merge-box")?.classList.toggle("hidden", e.target.value !== "Merged");
+    });
+
+    async function syncVlTeams() {
+        if (!$("vl-filter-circle") || !$("vl-filter-team")) return;
+        const teams = await fetchTeams($("vl-filter-circle").value);
+        fillTeamSelect($("vl-filter-team"), teams, null);
+    }
+
+    if ($("vl-filter-circle")) {
+        $("vl-filter-circle").onchange = async () => {
+            await syncVlTeams();
+            loadDailyLog();
+        };
+    }
+    if ($("vl-filter-team")) $("vl-filter-team").onchange = loadDailyLog;
+    if ($("vl-date")) $("vl-date").onchange = loadDailyLog;
+
     function getVlTeamId() {
-        const v = currentUser.role === "team" ? currentUser.id : $("vl-filter-team")?.value;
+        const v = isTeam() ? currentUser.id : $("vl-filter-team")?.value;
         return v ? parseInt(v) : null;
     }
 
     function clearVlForm() {
         ["vl-veh-no", "vl-supervisor", "vl-remarks", "vl-start-time", "vl-end-time", "vl-route", "vl-merged-team"]
-            .forEach((id) => { if ($(id)) $(id).value = ""; });
+            .forEach((id) => setVal(id, ""));
         ["vl-start-km", "vl-end-km", "vl-total-km", "vl-load-booked", "vl-amount-collected", "vl-dc-count"]
-            .forEach((id) => { if ($(id)) $(id).value = 0; });
-        if ($("vl-tl-present")) $("vl-tl-present").value = "true";
-        if ($("vl-op-mode")) $("vl-op-mode").value = "Operated Independently";
+            .forEach((id) => setVal(id, 0));
+        setVal("vl-tl-present", "true");
+        setVal("vl-op-mode", "Operated Independently");
         $("vl-merge-box")?.classList.add("hidden");
     }
 
     async function loadDailyLog() {
         const teamId = getVlTeamId();
-        if (!teamId || !$("vl-date")) {
+        if (!teamId || !$("vl-date") || !$("vl-date").value) {
             clearVlForm();
             return;
         }
 
         let data;
         try {
-            data = (await api(`/api/vehicle-log/day?date_str=${$("vl-date").value}&team_id=${teamId}`)) || {};
+            data = (await api(`/api/vehicle-log/day?date_str=${encodeURIComponent($("vl-date").value)}&team_id=${teamId}`)) || {};
         } catch (err) {
             console.error("Could not load vehicle log:", err);
             return;
@@ -467,32 +366,26 @@ document.addEventListener("DOMContentLoaded", () => {
         if ($("save-vl-btn")) $("save-vl-btn").disabled = !canEdit;
         if ($("lock-vl-btn")) $("lock-vl-btn").disabled = !canEdit;
 
-        if ($("vl-veh-no")) $("vl-veh-no").value = data.vehicle_no || "";
-        if ($("vl-supervisor")) $("vl-supervisor").value = data.supervisor || "";
-        if ($("vl-remarks")) $("vl-remarks").value = data.remarks || "";
-        if ($("vl-start-time")) $("vl-start-time").value = data.start_time || "";
-        if ($("vl-end-time")) $("vl-end-time").value = data.end_time || "";
-        if ($("vl-start-km")) $("vl-start-km").value = data.start_km || 0;
-        if ($("vl-end-km")) $("vl-end-km").value = data.end_km || 0;
-        if ($("vl-total-km")) $("vl-total-km").value = data.total_km || 0;
-        if ($("vl-route")) $("vl-route").value = data.journey_route || "";
+        setVal("vl-veh-no", data.vehicle_no || "");
+        setVal("vl-supervisor", data.supervisor || "");
+        setVal("vl-remarks", data.remarks || "");
+        setVal("vl-start-time", data.start_time || "");
+        setVal("vl-end-time", data.end_time || "");
+        setVal("vl-start-km", data.start_km || 0);
+        setVal("vl-end-km", data.end_km || 0);
+        setVal("vl-total-km", data.total_km || 0);
+        setVal("vl-route", data.journey_route || "");
 
-        // Operational fields
-        if ($("vl-load-booked")) $("vl-load-booked").value = data.load_booked || 0;
-        if ($("vl-amount-collected")) $("vl-amount-collected").value = data.amount_collected || 0;
-        if ($("vl-dc-count")) $("vl-dc-count").value = data.number_of_dc || 0;
-        if ($("vl-tl-present")) $("vl-tl-present").value = data.team_leader_present !== false ? "true" : "false";
-        if ($("vl-op-mode")) {
-            $("vl-op-mode").value = data.operation_mode || "Operated Independently";
-            if (data.operation_mode === "Merged") {
-                $("vl-merge-box")?.classList.remove("hidden");
-            } else {
-                $("vl-merge-box")?.classList.add("hidden");
-            }
-        }
-        if ($("vl-merged-team")) $("vl-merged-team").value = data.merged_with_team || "";
+        setVal("vl-load-booked", data.load_booked || 0);
+        setVal("vl-amount-collected", data.amount_collected || 0);
+        setVal("vl-dc-count", data.number_of_dc || 0);
+        setVal("vl-tl-present", data.team_leader_present !== false ? "true" : "false");
+
+        const mode = data.operation_mode || "Operated Independently";
+        setVal("vl-op-mode", mode);
+        $("vl-merge-box")?.classList.toggle("hidden", mode !== "Merged");
+        setVal("vl-merged-team", data.merged_with_team || "");
     }
-    if ($("vl-date")) $("vl-date").onchange = loadDailyLog;
 
     async function saveVehicleLog(isLock) {
         const teamId = getVlTeamId();
@@ -529,14 +422,27 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("Save failed: " + err.message);
         }
     }
-    if ($("save-vl-btn")) $("save-vl-btn").onclick = () => saveVehicleLog(false);
-    if ($("lock-vl-btn")) $("lock-vl-btn").onclick = () => {
-        if (confirm("Are you sure? Once locked, team logins cannot modify this log.")) saveVehicleLog(true);
-    };
 
-    // --- PDF Reports Engine ---
+    if ($("save-vl-btn")) $("save-vl-btn").onclick = () => saveVehicleLog(false);
+    if ($("lock-vl-btn")) {
+        $("lock-vl-btn").onclick = () => {
+            if (confirm("Are you sure? Once locked, team logins cannot modify this log.")) saveVehicleLog(true);
+        };
+    }
+
+    // =====================================================================
+    // PDF REPORTS
+    // =====================================================================
+    async function syncReportTeams() {
+        if (!$("pdf-circle") || !$("pdf-team")) return;
+        let teams = await fetchTeams($("pdf-circle").value);
+        if (isTeam()) teams = teams.filter((t) => t.id === currentUser.id);
+        fillTeamSelect($("pdf-team"), teams, isTeam() ? null : "All Teams (Circle Summary)");
+    }
+    if ($("pdf-circle")) $("pdf-circle").onchange = () => syncReportTeams().catch(console.error);
+
     async function downloadPdfFile(url, fallbackFilename, triggerBtn) {
-        const originalText = triggerBtn ? triggerBtn.innerHTML : "";
+        const originalHtml = triggerBtn ? triggerBtn.innerHTML : "";
         if (triggerBtn) {
             triggerBtn.disabled = true;
             triggerBtn.innerHTML = "Generating PDF...";
@@ -544,16 +450,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             const res = await fetch(url);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({ detail: "Server error generating PDF" }));
-                throw new Error(errData.detail || "Failed to generate PDF");
-            }
+            if (!res.ok) throw new Error(await errorMessage(res, "Failed to generate PDF"));
 
             const blob = await res.blob();
             const blobUrl = window.URL.createObjectURL(blob);
 
-            const disposition = res.headers.get("Content-Disposition");
             let filename = fallbackFilename;
+            const disposition = res.headers.get("Content-Disposition");
             if (disposition && disposition.includes("filename=")) {
                 filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
             }
@@ -571,224 +474,65 @@ document.addEventListener("DOMContentLoaded", () => {
         } finally {
             if (triggerBtn) {
                 triggerBtn.disabled = false;
-                triggerBtn.innerHTML = originalText;
+                triggerBtn.innerHTML = originalHtml;
             }
         }
     }
 
-    const btnTeamLog = $("btn-download-team-log");
-    if (btnTeamLog) {
-        btnTeamLog.onclick = () => {
-            let teamId = $("pdf-team")?.value;
-            const year = $("pdf-year")?.value || 2026;
-            const month = $("pdf-month")?.value || 10;
+    function pdfParams() {
+        return {
+            circle: $("pdf-circle")?.value || "JEYPORE",
+            teamId: $("pdf-team")?.value || "",
+            year: $("pdf-year")?.value || new Date().getFullYear(),
+            month: $("pdf-month")?.value || (new Date().getMonth() + 1)
+        };
+    }
 
-            if (!teamId || teamId === "all" || teamId === "") {
-                if (currentUser && currentUser.role === "team") {
+    if ($("btn-download-team-log")) {
+        $("btn-download-team-log").onclick = () => {
+            const p = pdfParams();
+            let teamId = p.teamId;
+            if (!teamId) {
+                if (isTeam()) {
                     teamId = currentUser.id;
                 } else {
-                    alert("Please select a specific Team Area from the 'Team Scope' dropdown.");
-                    return;
+                    return alert("Please select a specific Team Area from the 'Team Scope' dropdown.");
                 }
             }
-
-            const url = `/api/reports/download-team-log-pdf?team_id=${encodeURIComponent(teamId)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
-            downloadPdfFile(url, `Daily_Log_Team_${teamId}_${month}_${year}.pdf`, btnTeamLog);
+            const url = `/api/reports/download-team-log-pdf?team_id=${encodeURIComponent(teamId)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
+            downloadPdfFile(url, `Daily_Log_Team_${teamId}_${p.month}_${p.year}.pdf`, $("btn-download-team-log"));
         };
     }
 
-    const btnAttPdf = $("dl-att-pdf");
-    if (btnAttPdf) {
-        btnAttPdf.onclick = () => {
-            const circle = $("pdf-circle")?.value || "JEYPORE";
-            const teamId = $("pdf-team")?.value || "";
-            const year = $("pdf-year")?.value || 2026;
-            const month = $("pdf-month")?.value || 10;
-
-            let url = `/api/reports/download-attendance-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
-            if (teamId && teamId !== "all" && teamId !== "") {
-                url += `&team_id=${encodeURIComponent(teamId)}`;
-            }
-
-            downloadPdfFile(url, `Form_D_Attendance_${circle}_${month}_${year}.pdf`, btnAttPdf);
+    if ($("dl-att-pdf")) {
+        $("dl-att-pdf").onclick = () => {
+            const p = pdfParams();
+            let url = `/api/reports/download-attendance-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
+            if (p.teamId) url += `&team_id=${encodeURIComponent(p.teamId)}`;
+            downloadPdfFile(url, `Form_D_Attendance_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-att-pdf"));
         };
     }
 
-    const btnCircleLogPdf = $("dl-circle-log-pdf");
-    if (btnCircleLogPdf) {
-        btnCircleLogPdf.onclick = () => {
-            const circle = $("pdf-circle")?.value || "JEYPORE";
-            const year = $("pdf-year")?.value || 2026;
-            const month = $("pdf-month")?.value || 10;
-
-            const url = `/api/reports/download-circle-log-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
-            downloadPdfFile(url, `Circle_Summary_${circle}_${month}_${year}.pdf`, btnCircleLogPdf);
+    if ($("dl-circle-log-pdf")) {
+        $("dl-circle-log-pdf").onclick = () => {
+            const p = pdfParams();
+            const url = `/api/reports/download-circle-log-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
+            downloadPdfFile(url, `Circle_Summary_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-circle-log-pdf"));
         };
     }
 
-    const btnPerfPdf = $("dl-performance-pdf");
-    if (btnPerfPdf) {
-        btnPerfPdf.onclick = () => {
-            const circle = $("pdf-circle")?.value || "JEYPORE";
-            const teamId = $("pdf-team")?.value || "";
-            const year = $("pdf-year")?.value || 2026;
-            const month = $("pdf-month")?.value || 10;
-
-            let url = `/api/reports/download-performance-pdf?circle=${encodeURIComponent(circle)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
-            if (teamId && teamId !== "all" && teamId !== "") {
-                url += `&team_id=${encodeURIComponent(teamId)}`;
-            }
-            downloadPdfFile(url, `Team_Performance_${circle}_${month}_${year}.pdf`, btnPerfPdf);
+    if ($("dl-performance-pdf")) {
+        $("dl-performance-pdf").onclick = () => {
+            const p = pdfParams();
+            let url = `/api/reports/download-performance-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
+            if (p.teamId) url += `&team_id=${encodeURIComponent(p.teamId)}`;
+            downloadPdfFile(url, `Team_Performance_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-performance-pdf"));
         };
     }
 
-    // Admin Directories
-    async function loadAdminDirectories() {
-        const teamCircle = $("dir-team-circle")?.value || "";
-        const teams = await fetchTeams(teamCircle, true);
-
-        let tHtml = `<table><thead><tr><th>Circle</th><th>Team Area</th><th>Team Leader</th><th>Supervisor</th><th>Reporting Manager</th><th>Username</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
-        (teams || []).forEach((t) => {
-            const tName = t.team_name || t.name || "-";
-            tHtml += `
-        <tr>
-          <td>${esc(t.circle)}</td>
-          <td><strong>${esc(tName)}</strong></td>
-          <td>${esc(t.team_lead) || "-"}</td>
-          <td>${esc(t.supervisor) || "-"}</td>
-          <td>${esc(t.reporting_manager) || "-"}</td>
-          <td><code>${esc(t.username)}</code></td>
-          <td><strong style="color:${t.is_active ? "#16a34a" : "#dc2626"}">${t.is_active ? "ACTIVE" : "INACTIVE"}</strong></td>
-          <td>
-            <button class="btn ${t.is_active ? "danger" : "success"} btn-toggle-team" data-id="${t.id}" data-active="${t.is_active}">
-              ${t.is_active ? "Deactivate" : "Activate"}
-            </button>
-          </td>
-        </tr>`;
-        });
-        tHtml += `</tbody></table>`;
-        if ($("adm-team-list")) $("adm-team-list").innerHTML = tHtml;
-
-        document.querySelectorAll(".btn-toggle-team").forEach((btn) => {
-            btn.onclick = async () => {
-                const id = btn.getAttribute("data-id");
-                const active = btn.getAttribute("data-active") === "true";
-                try {
-                    await api(`/api/admin/teams/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
-                    await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
-                    await loadAdminDirectories();
-                } catch (err) {
-                    alert("Update failed: " + err.message);
-                }
-            };
-        });
-
-        const empCircle = $("dir-emp-circle")?.value || "";
-        const emps = await api(`/api/admin/employees/all?circle=${encodeURIComponent(empCircle)}`);
-
-        let eHtml = `<table><thead><tr><th>Circle</th><th>Team</th><th>Emp Code</th><th>Employee Name</th><th>Designation</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
-        (emps || []).forEach((e) => {
-            // Check flat properties first, then nested team object fallback
-            const circleName = e.circle || (e.team ? e.team.circle : "") || "-";
-            const teamName = e.team_name || (e.team ? (e.team.team_name || e.team.name) : "") || "-";
-
-            eHtml += `
-        <tr>
-          <td>${esc(circleName)}</td>
-          <td><strong>${esc(teamName)}</strong></td>
-          <td>${esc(e.emp_code)}</td>
-          <td>${esc(e.name)}</td>
-          <td>${esc(e.designation)}</td>
-          <td><strong style="color:${e.is_active !== false ? "#16a34a" : "#dc2626"}">${e.is_active !== false ? "ACTIVE" : "INACTIVE"}</strong></td>
-          <td>
-            <button class="btn ${e.is_active !== false ? "danger" : "success"} btn-toggle-emp" data-id="${e.id}" data-active="${e.is_active !== false}">
-              ${e.is_active !== false ? "Deactivate" : "Activate"}
-            </button>
-          </td>
-        </tr>`;
-        });
-        eHtml += `</tbody></table>`;
-        if ($("adm-emp-list")) $("adm-emp-list").innerHTML = eHtml;
-
-        document.querySelectorAll(".btn-toggle-emp").forEach((btn) => {
-            btn.onclick = async () => {
-                const id = btn.getAttribute("data-id");
-                const active = btn.getAttribute("data-active") === "true";
-                try {
-                    await api(`/api/admin/employees/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
-                    await loadAdminDirectories();
-                } catch (err) {
-                    alert("Update failed: " + err.message);
-                }
-            };
-        });
-    }
-
-    if ($("dir-team-circle")) $("dir-team-circle").onchange = () => loadAdminDirectories().catch(console.error);
-    if ($("dir-emp-circle")) $("dir-emp-circle").onchange = () => loadAdminDirectories().catch(console.error);
-
-    const createTeamBtn = $("adm-create-team-btn");
-    if (createTeamBtn) {
-        createTeamBtn.onclick = async () => {
-            const rawName = ($("adm-team-name")?.value || "").trim();
-            const rawCircle = ($("adm-team-circle")?.value || "").trim();
-            const rawUser = ($("adm-team-user")?.value || "").trim();
-            const rawPass = ($("adm-team-pass")?.value || "").trim();
-            const rawLead = ($("adm-team-lead")?.value || "").trim();
-            const rawSup = ($("adm-team-supervisor")?.value || "").trim();
-            const rawMgr = ($("adm-team-mgr")?.value || "").trim();
-
-            if (!rawName) return alert("Please enter Team Name!");
-            if (!rawCircle) return alert("Please select Circle!");
-            if (!rawUser) return alert("Please enter Username!");
-            if (!rawPass) return alert("Please enter Password!");
-
-            const payload = {
-                team_name: rawName,
-                team_lead: rawLead,
-                supervisor: rawSup,
-                circle: rawCircle,
-                username: rawUser,
-                password: rawPass,
-                reporting_manager: rawMgr
-            };
-
-            try {
-                await api("/api/admin/teams", jsonOpts("POST", payload));
-                alert("Team registered successfully!");
-                ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass"]
-                    .forEach((id) => { if ($(id)) $(id).value = ""; });
-                await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
-                await loadAdminDirectories();
-            } catch (err) {
-                alert("Could not create team: " + err.message);
-            }
-        };
-    }
-
-    const createEmpBtn = $("adm-create-emp-btn");
-    if (createEmpBtn) {
-        createEmpBtn.onclick = async () => {
-            const payload = {
-                emp_code: $("adm-emp-code")?.value.trim() || "",
-                name: $("adm-emp-name")?.value.trim() || "",
-                designation: $("adm-emp-desig")?.value.trim() || "",
-                team_id: parseInt($("adm-emp-team")?.value) || null
-            };
-            if (!payload.emp_code || !payload.name || !payload.team_id) return alert("Fill employee details!");
-
-            try {
-                await api("/api/admin/employees", jsonOpts("POST", payload));
-                alert("Employee registered!");
-                ["adm-emp-code", "adm-emp-name", "adm-emp-desig"].forEach((id) => { if ($(id)) $(id).value = ""; });
-                await loadAdminDirectories();
-            } catch (err) {
-                alert("Could not create employee: " + err.message);
-            }
-        };
-    }
-
-    // Cloudflare R2 Document Assets
+    // =====================================================================
+    // DOCUMENT CENTER (Cloudflare R2)
+    // =====================================================================
     async function loadAssets() {
         const tbody = $("assets-tbody");
         if (!tbody) return;
@@ -808,7 +552,6 @@ document.addEventListener("DOMContentLoaded", () => {
           <a href="${esc(href)}" target="_blank" rel="noopener noreferrer" class="btn success" download style="text-decoration:none; padding:6px 12px; display:inline-block;">
             📥 Download
           </a>`;
-
                 if (isAdmin()) {
                     actions += `
           <button class="btn danger btn-del-asset" data-id="${a.id}" style="margin-left:6px; padding:6px 10px;">
@@ -846,12 +589,9 @@ document.addEventListener("DOMContentLoaded", () => {
         uploadForm.addEventListener("submit", async (e) => {
             e.preventDefault();
 
-            const titleEl = $("asset-title");
-            const fileEl = $("asset-file");
+            const title = $("asset-title")?.value.trim() || "";
+            const file = $("asset-file")?.files?.[0] || null;
             const submitBtn = uploadForm.querySelector("button[type='submit']");
-
-            const title = titleEl ? titleEl.value.trim() : "";
-            const file = fileEl && fileEl.files ? fileEl.files[0] : null;
             if (!title || !file) return alert("Enter a title and choose a file!");
 
             const fd = new FormData();
@@ -879,4 +619,485 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    // =====================================================================
+    // ADMIN: TEAMS + EMPLOYEES
+    // =====================================================================
+    async function syncAdminEmpTeams() {
+        if (!$("adm-emp-team")) return;
+        const teams = await fetchTeams("", true);
+        fillTeamSelect($("adm-emp-team"), teams, null, true);
+    }
+
+    async function refreshAllTeamSelects() {
+        await Promise.all([syncReportTeams(), syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
+    }
+
+    async function loadAdminDirectories() {
+        // ---- Teams ----
+        const teams = await fetchTeams($("dir-team-circle")?.value || "", true);
+
+        let tHtml = `<table><thead><tr><th>Circle</th><th>Team Area</th><th>Team Leader</th><th>Supervisor</th><th>Reporting Manager</th><th>Username</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+        (teams || []).forEach((t) => {
+            const tName = t.team_name || t.name || "-";
+            tHtml += `
+        <tr>
+          <td>${esc(t.circle)}</td>
+          <td><strong>${esc(tName)}</strong></td>
+          <td>${esc(t.team_lead) || "-"}</td>
+          <td>${esc(t.supervisor) || "-"}</td>
+          <td>${esc(t.reporting_manager) || "-"}</td>
+          <td><code>${esc(t.username)}</code></td>
+          <td><strong style="color:${t.is_active ? "#16a34a" : "#dc2626"}">${t.is_active ? "ACTIVE" : "INACTIVE"}</strong></td>
+          <td>
+            <button class="btn ${t.is_active ? "danger" : "success"} btn-toggle-team" data-id="${t.id}" data-active="${t.is_active}">
+              ${t.is_active ? "Deactivate" : "Activate"}
+            </button>
+          </td>
+        </tr>`;
+        });
+        tHtml += `</tbody></table>`;
+        if ($("adm-team-list")) $("adm-team-list").innerHTML = tHtml;
+
+        document.querySelectorAll(".btn-toggle-team").forEach((btn) => {
+            btn.onclick = async () => {
+                const id = btn.getAttribute("data-id");
+                const active = btn.getAttribute("data-active") === "true";
+                try {
+                    await api(`/api/admin/teams/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
+                    await refreshAllTeamSelects();
+                    await loadAdminDirectories();
+                } catch (err) {
+                    alert("Update failed: " + err.message);
+                }
+            };
+        });
+
+        // ---- Employees ----
+        const emps = await api(`/api/admin/employees/all?circle=${encodeURIComponent($("dir-emp-circle")?.value || "")}`);
+
+        let eHtml = `<table><thead><tr><th>Circle</th><th>Team</th><th>Emp Code</th><th>Employee Name</th><th>Designation</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+        (emps || []).forEach((e) => {
+            const active = e.is_active !== false;
+            eHtml += `
+        <tr>
+          <td>${esc(e.circle || "-")}</td>
+          <td><strong>${esc(e.team_name || "-")}</strong></td>
+          <td>${esc(e.emp_code)}</td>
+          <td>${esc(e.name)}</td>
+          <td>${esc(e.designation)}</td>
+          <td><strong style="color:${active ? "#16a34a" : "#dc2626"}">${active ? "ACTIVE" : "INACTIVE"}</strong></td>
+          <td>
+            <button class="btn ${active ? "danger" : "success"} btn-toggle-emp" data-id="${e.id}" data-active="${active}">
+              ${active ? "Deactivate" : "Activate"}
+            </button>
+          </td>
+        </tr>`;
+        });
+        eHtml += `</tbody></table>`;
+        if ($("adm-emp-list")) $("adm-emp-list").innerHTML = eHtml;
+
+        document.querySelectorAll(".btn-toggle-emp").forEach((btn) => {
+            btn.onclick = async () => {
+                const id = btn.getAttribute("data-id");
+                const active = btn.getAttribute("data-active") === "true";
+                try {
+                    await api(`/api/admin/employees/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
+                    await loadAdminDirectories();
+                } catch (err) {
+                    alert("Update failed: " + err.message);
+                }
+            };
+        });
+    }
+
+    if ($("dir-team-circle")) $("dir-team-circle").onchange = () => loadAdminDirectories().catch(console.error);
+    if ($("dir-emp-circle")) $("dir-emp-circle").onchange = () => loadAdminDirectories().catch(console.error);
+
+    // ---- Team form: create / search / update / cancel ----
+    const TEAM_FIELDS = ["adm-team-name", "adm-team-lead", "adm-team-supervisor", "adm-team-user", "adm-team-pass"];
+
+    function setTeamEditMode(editing) {
+        show($("adm-update-team-btn"), editing);
+        show($("adm-cancel-team-btn"), editing);
+        show($("adm-create-team-btn"), !editing);
+    }
+
+    function resetTeamForm() {
+        setVal("adm-edit-team-id", "");
+        TEAM_FIELDS.forEach((id) => setVal(id, ""));
+        setVal("adm-team-mgr", DEFAULT_MANAGER);
+        setVal("adm-search-team-query", "");
+        if ($("adm-team-msg")) $("adm-team-msg").textContent = "";
+        setTeamEditMode(false);
+    }
+
+    function teamFormValues() {
+        return {
+            name: ($("adm-team-name")?.value || "").trim(),
+            lead: ($("adm-team-lead")?.value || "").trim(),
+            supervisor: ($("adm-team-supervisor")?.value || "").trim(),
+            circle: ($("adm-team-circle")?.value || "").trim(),
+            username: ($("adm-team-user")?.value || "").trim(),
+            password: ($("adm-team-pass")?.value || "").trim(),
+            manager: ($("adm-team-mgr")?.value || "").trim()
+        };
+    }
+
+    if ($("adm-create-team-btn")) {
+        $("adm-create-team-btn").onclick = async () => {
+            const v = teamFormValues();
+            if (!v.name) return alert("Please enter Team Name!");
+            if (!v.circle) return alert("Please select Circle!");
+            if (!v.username) return alert("Please enter Username!");
+            if (!v.password) return alert("Please enter Password!");
+
+            try {
+                await api("/api/admin/teams", jsonOpts("POST", {
+                    team_name: v.name,
+                    team_lead: v.lead,
+                    supervisor: v.supervisor,
+                    circle: v.circle,
+                    username: v.username,
+                    password: v.password,
+                    reporting_manager: v.manager
+                }));
+                alert("Team registered successfully!");
+                resetTeamForm();
+                await refreshAllTeamSelects();
+                await loadAdminDirectories();
+            } catch (err) {
+                alert("Could not create team: " + err.message);
+            }
+        };
+    }
+
+    if ($("adm-search-team-btn")) {
+        $("adm-search-team-btn").onclick = async () => {
+            const query = $("adm-search-team-query")?.value.trim();
+            if (!query) return alert("Enter Team Name or Username to search!");
+
+            const btn = $("adm-search-team-btn");
+            setBusy(btn, true, "Searching...");
+            try {
+                const data = await api(`/api/admin/team/search?query=${encodeURIComponent(query)}`);
+
+                setVal("adm-edit-team-id", data.id);
+                setVal("adm-team-name", data.name || data.team_name);
+                setVal("adm-team-lead", data.team_lead);
+                setVal("adm-team-supervisor", data.supervisor_name || data.supervisor);
+                setVal("adm-team-circle", data.circle);
+                setVal("adm-team-mgr", data.reporting_manager || DEFAULT_MANAGER);
+                setVal("adm-team-user", data.login_username || data.username);
+                setVal("adm-team-pass", data.password);
+
+                setTeamEditMode(true);
+                const msg = $("adm-team-msg");
+                if (msg) {
+                    msg.textContent = `Editing Team: ${data.name || data.team_name}`;
+                    msg.style.color = "#2563eb";
+                }
+            } catch (err) {
+                alert("Team not found: " + err.message);
+            } finally {
+                setBusy(btn, false);
+            }
+        };
+    }
+
+    if ($("adm-update-team-btn")) {
+        $("adm-update-team-btn").onclick = async () => {
+            const id = $("adm-edit-team-id")?.value;
+            if (!id) return alert("Search for a team first.");
+            const v = teamFormValues();
+            if (!v.name) return alert("Please enter Team Name!");
+
+            // Matches TeamDetailUpdate in main.py
+            const payload = {
+                name: v.name,
+                team_lead: v.lead || null,
+                supervisor_name: v.supervisor || null,
+                circle: v.circle || null,
+                login_username: v.username || null,
+                reporting_manager: v.manager || null,
+                password: v.password || null
+            };
+
+            const btn = $("adm-update-team-btn");
+            setBusy(btn, true, "Updating...");
+            try {
+                await api(`/api/admin/team/${encodeURIComponent(id)}`, jsonOpts("PUT", payload));
+                alert("Team updated successfully!");
+                resetTeamForm();
+                await refreshAllTeamSelects();
+                await loadAdminDirectories();
+            } catch (err) {
+                alert("Could not update team: " + err.message);
+            } finally {
+                setBusy(btn, false);
+            }
+        };
+    }
+
+    if ($("adm-cancel-team-btn")) {
+        $("adm-cancel-team-btn").onclick = () => {
+            const btn = $("adm-cancel-team-btn");
+            setBusy(btn, true, "Cancelling...");
+            setTimeout(() => {
+                resetTeamForm();
+                setBusy(btn, false);
+            }, 300);
+        };
+    }
+
+    // ---- Employee form: create / search / update / cancel ----
+    function setEmpEditMode(editing) {
+        show($("adm-update-emp-btn"), editing);
+        show($("adm-cancel-emp-btn"), editing);
+        show($("adm-create-emp-btn"), !editing);
+    }
+
+    function resetEmpForm() {
+        setVal("adm-edit-emp-pk-id", "");
+        ["adm-emp-code", "adm-emp-name", "adm-emp-desig", "adm-search-emp-query"].forEach((id) => setVal(id, ""));
+        if ($("adm-emp-msg")) $("adm-emp-msg").textContent = "";
+        setEmpEditMode(false);
+    }
+
+    function empFormValues() {
+        return {
+            emp_code: $("adm-emp-code")?.value.trim() || "",
+            name: $("adm-emp-name")?.value.trim() || "",
+            designation: $("adm-emp-desig")?.value.trim() || "",
+            team_id: parseInt($("adm-emp-team")?.value) || null
+        };
+    }
+
+    if ($("adm-create-emp-btn")) {
+        $("adm-create-emp-btn").onclick = async () => {
+            const v = empFormValues();
+            if (!v.emp_code || !v.name || !v.team_id) return alert("Fill employee details!");
+
+            try {
+                await api("/api/admin/employees", jsonOpts("POST", v));
+                alert("Employee registered!");
+                resetEmpForm();
+                await loadAdminDirectories();
+            } catch (err) {
+                alert("Could not create employee: " + err.message);
+            }
+        };
+    }
+
+    if ($("adm-search-emp-btn")) {
+        $("adm-search-emp-btn").onclick = async () => {
+            const code = $("adm-search-emp-query")?.value.trim();
+            if (!code) return alert("Enter Employee Code to search!");
+
+            const btn = $("adm-search-emp-btn");
+            setBusy(btn, true, "Searching...");
+            try {
+                const data = await api(`/api/admin/employee/search?emp_code=${encodeURIComponent(code)}`);
+
+                setVal("adm-edit-emp-pk-id", data.id);
+                setVal("adm-emp-code", data.emp_code);
+                setVal("adm-emp-name", data.full_name || data.name);
+                setVal("adm-emp-desig", data.designation);
+                setVal("adm-emp-team", data.team_id);
+
+                setEmpEditMode(true);
+                const msg = $("adm-emp-msg");
+                if (msg) {
+                    msg.textContent = `Editing Employee: ${data.full_name || data.name} (${data.emp_code})`;
+                    msg.style.color = "#2563eb";
+                }
+            } catch (err) {
+                alert("Employee not found: " + err.message);
+            } finally {
+                setBusy(btn, false);
+            }
+        };
+    }
+
+    if ($("adm-update-emp-btn")) {
+        $("adm-update-emp-btn").onclick = async () => {
+            const pk = $("adm-edit-emp-pk-id")?.value;
+            if (!pk) return alert("Search for an employee first.");
+            const v = empFormValues();
+            if (!v.emp_code || !v.name) return alert("Employee code and name are required!");
+
+            // Matches EmployeeDetailUpdate in main.py
+            const payload = {
+                emp_code: v.emp_code,
+                full_name: v.name,
+                designation: v.designation || null,
+                team_id: v.team_id
+            };
+
+            const btn = $("adm-update-emp-btn");
+            setBusy(btn, true, "Updating...");
+            try {
+                await api(`/api/admin/employee/${encodeURIComponent(pk)}`, jsonOpts("PUT", payload));
+                alert("Employee updated successfully!");
+                resetEmpForm();
+                await loadAdminDirectories();
+            } catch (err) {
+                alert("Could not update employee: " + err.message);
+            } finally {
+                setBusy(btn, false);
+            }
+        };
+    }
+
+    if ($("adm-cancel-emp-btn")) {
+        $("adm-cancel-emp-btn").onclick = () => {
+            const btn = $("adm-cancel-emp-btn");
+            setBusy(btn, true, "Cancelling...");
+            setTimeout(() => {
+                resetEmpForm();
+                setBusy(btn, false);
+            }, 300);
+        };
+    }
+
+    // =====================================================================
+    // VERIFICATION TAB
+    // =====================================================================
+    function initVerificationTab() {
+        if ($("verify-date") && !$("verify-date").value) $("verify-date").value = localToday();
+
+        // Team logins can only verify their own circle/team
+        if (isTeam() && $("verify-filter-circle") && currentUser.circle) {
+            $("verify-filter-circle").value = currentUser.circle;
+            $("verify-filter-circle").disabled = true;
+        }
+        populateVerifyTeams();
+    }
+
+    async function populateVerifyTeams() {
+        const teamSelect = $("verify-filter-team");
+        if (!teamSelect) return;
+        const previous = teamSelect.value;
+        teamSelect.innerHTML = `<option value="ALL">All Teams</option>`;
+
+        try {
+            let teams = await fetchTeams($("verify-filter-circle")?.value || "");
+            if (isTeam()) teams = teams.filter((t) => t.id === currentUser.id);
+
+            (teams || []).forEach((t) => {
+                const name = t.team_name || t.name;
+                if (!name) return;
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                teamSelect.appendChild(opt);
+            });
+
+            if (isTeam() && teams.length === 1) {
+                teamSelect.value = teams[0].team_name || teams[0].name;
+                teamSelect.disabled = true;
+            } else if (previous && Array.from(teamSelect.options).some((o) => o.value === previous)) {
+                teamSelect.value = previous;
+            }
+        } catch (e) {
+            console.error("Failed to load teams for verification filter", e);
+        }
+    }
+    $("verify-filter-circle")?.addEventListener("change", populateVerifyTeams);
+
+    // Sub-tabs: Attendance / Log Book
+    function switchVerifyView(showAtt) {
+        $("subtab-verify-att")?.classList.toggle("active", showAtt);
+        $("subtab-verify-log")?.classList.toggle("active", !showAtt);
+        $("verify-view-att")?.classList.toggle("hidden", !showAtt);
+        $("verify-view-log")?.classList.toggle("hidden", showAtt);
+    }
+    $("subtab-verify-att")?.addEventListener("click", () => switchVerifyView(true));
+    $("subtab-verify-log")?.addEventListener("click", () => switchVerifyView(false));
+
+    function attendanceBadge(r) {
+        if (r.status === "P" || r.status === "Present") return "role";
+        return "danger";
+    }
+
+    async function loadVerificationData() {
+        const dateVal = $("verify-date")?.value;
+        if (!dateVal) return alert("Please choose a date.");
+
+        const circleVal = normCircle($("verify-filter-circle")?.value) || "ALL";
+        const teamVal = $("verify-filter-team")?.value || "ALL";
+
+        const btn = $("btn-run-verify");
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Loading...";
+        }
+
+        try {
+            const url = `/api/verification/summary?target_date=${encodeURIComponent(dateVal)}&circle=${encodeURIComponent(circleVal)}&team_name=${encodeURIComponent(teamVal)}`;
+            const data = await api(url);
+            const attendance = data.attendance || [];
+            const logs = data.logs || [];
+
+            // Attendance table
+            if ($("count-verify-att")) $("count-verify-att").textContent = attendance.length;
+            const attTbody = $("verify-att-tbody");
+            if (attTbody) {
+                attTbody.innerHTML = attendance.length === 0
+                    ? `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:20px;">No attendance found for this date.</td></tr>`
+                    : attendance.map((r, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><strong>${esc(r.emp_code)}</strong></td>
+                    <td>${esc(r.emp_name)}</td>
+                    <td>${esc(r.designation)}</td>
+                    <td>${esc(r.team_name)}</td>
+                    <td>${esc(r.circle || "-")}</td>
+                    <td>
+                        <span class="badge ${attendanceBadge(r)}" style="padding:2px 8px;">${esc(r.status)}</span>
+                    </td>
+                </tr>`).join("");
+            }
+
+            // Log book table
+            if ($("count-verify-log")) $("count-verify-log").textContent = logs.length;
+            const logTbody = $("verify-log-tbody");
+            if (logTbody) {
+                logTbody.innerHTML = logs.length === 0
+                    ? `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:20px;">No log book entries found for this date.</td></tr>`
+                    : logs.map((l) => {
+                        const label = !l.is_submitted ? "Not Submitted" : (l.is_locked ? "Locked" : "Draft");
+                        const cls = !l.is_submitted || l.is_locked ? "danger" : "role";
+                        const km = l.total_km === "-" ? "-" : `${esc(l.total_km)} KM`;
+                        const load = l.load_booked === "-" ? "-" : `${esc(l.load_booked)} KW`;
+                        const amt = l.amount_collected === "-" ? "-" : `₹${esc(l.amount_collected)}`;
+                        return `
+                <tr>
+                    <td><strong>${esc(l.team_name)}</strong></td>
+                    <td>${esc(l.vehicle_no || "-")}</td>
+                    <td style="max-width:250px; font-size:12px;">${esc(l.route || "-")}</td>
+                    <td><strong>${km}</strong></td>
+                    <td>${load}</td>
+                    <td>${amt}</td>
+                    <td>${esc(l.dc_count)}</td>
+                    <td>${esc(l.supervisor || "-")}</td>
+                    <td><span class="badge ${cls}">${label}</span></td>
+                </tr>`;
+                    }).join("");
+            }
+        } catch (err) {
+            alert("Failed to load records: " + err.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = "🔍 View Records";
+            }
+        }
+    }
+    $("btn-run-verify")?.addEventListener("click", loadVerificationData);
+
+    // =====================================================================
+    // START
+    // =====================================================================
+    if (currentUser) init();
 });

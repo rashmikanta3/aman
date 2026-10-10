@@ -1,8 +1,10 @@
 import io
 import calendar
-from datetime import date
+from datetime import datetime
 from typing import Optional, List, Dict
-from reportlab.lib.pagesizes import A4, landscape, portrait
+from xml.sax.saxutils import escape
+
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -10,7 +12,7 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
-    KeepTogether
+    HRFlowable,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
@@ -24,33 +26,21 @@ DEFAULT_AGENCY = {
     "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
 }
 
+_NIRMAL = {
+    "name": "M/S NIRMAL KUMAR SAMANTARAY",
+    "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
+}
+
 # Add or update specific circles and their agency company/address details here
 CIRCLE_AGENCY_MAP: Dict[str, Dict[str, str]] = {
-    "JEYPORE": {
-        "name": "AMMAN ASSOCIATED SERVICES PRIVATE LIMITED",
-        "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
-    },
-    "RAYAGADA": {
-        "name": "AMMAN ASSOCIATED SERVICES PRIVATE LIMITED",
-                "address": "Corporate Office: DCB 126, DLF Cybercity, Technology Corridor, Patia, Bhubaneswar - 751024"
-    },
-    "BHANJANAGAR": {
-        "name": "M/S NIRMAL KUMAR SAMANTARAY",
-        "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
-    },
-    "ASKA": {
-         "name": "M/S NIRMAL KUMAR SAMANTARAY",
-         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
-    },
-    "BERHAMPUR": {
-         "name": "M/S NIRMAL KUMAR SAMANTARAY",
-         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
-    },
-    "CITY": {
-         "name": "M/S NIRMAL KUMAR SAMANTARAY",
-         "address": "Electrical Contractor & Labour Provider Plot No D/1165,Sector-10 CDA Cuttack 753014 Mob-9337140466"
-    }
+    "JEYPORE": DEFAULT_AGENCY,
+    "RAYAGADA": DEFAULT_AGENCY,
+    "BHANJANAGAR": _NIRMAL,
+    "ASKA": _NIRMAL,
+    "BERHAMPUR": _NIRMAL,
+    "CITY": _NIRMAL,
 }
+
 
 def get_agency_header(circle_name: Optional[str]) -> Dict[str, str]:
     """Returns the company name and base address for a given circle."""
@@ -59,190 +49,268 @@ def get_agency_header(circle_name: Optional[str]) -> Dict[str, str]:
     return CIRCLE_AGENCY_MAP.get(circle_name.strip().upper(), DEFAULT_AGENCY)
 
 
+# =========================================================================
+# THEME + SHARED HELPERS
+# =========================================================================
+# Black & white print-safe palette: pure black text/rules + light greys only.
+NAVY = colors.black                      # (name kept) heading text and heavy rules
+INK = colors.black
+GREY_TXT = colors.HexColor('#333333')
+GRID = colors.HexColor('#444444')
+HEADER_BG = colors.HexColor('#d0d0d0')   # table header row
+ZEBRA = colors.HexColor('#f4f4f4')
+TOTAL_BG = colors.HexColor('#e2e2e2')
+SUNDAY_BG = colors.HexColor('#e6e6e6')
+META_BG = colors.HexColor('#f4f4f4')
+
+PAGE_W, PAGE_H = landscape(A4)          # 841.89 x 595.27
+FOOTER_MARGIN = 95                      # space reserved for the signature block
+
+
+def t(value) -> str:
+    """Escape user data for safe use inside Paragraph markup."""
+    return escape(str(value if value is not None else ""))
+
+
+def fit(widths: List[float], total: float) -> List[float]:
+    """Scale column widths proportionally so the table fills `total` points."""
+    s = float(sum(widths))
+    return [w * total / s for w in widths]
+
+
+def fmt_date(v) -> str:
+    if hasattr(v, "strftime"):
+        return v.strftime("%d-%m-%Y")
+    s = str(v or "")
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return s
+
+
 def get_report_styles():
-    styles = getSampleStyleSheet()
+    base = getSampleStyleSheet()['Normal']
+
+    def style(name, **kw):
+        return ParagraphStyle(name, parent=base, **kw)
+
     return {
-        'company': ParagraphStyle(
-            'CompanyTitle',
-            parent=styles['Heading1'],
-            fontName='Helvetica-Bold',
-            fontSize=11,
-            leading=14,
-            alignment=1,
-            textColor=colors.HexColor('#111827')
-        ),
-        'sub': ParagraphStyle(
-            'SubHeader',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=7.5,
-            leading=9.5,
-            alignment=1,
-            textColor=colors.HexColor('#4b5563')
-        ),
-        'title': ParagraphStyle(
-            'DocTitle',
-            parent=styles['Heading2'],
-            fontName='Helvetica-Bold',
-            fontSize=9.5,
-            leading=12,
-            alignment=1,
-            textColor=colors.HexColor('#1f2937')
-        ),
-        'cell': ParagraphStyle(
-            'CellText',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=7.5,
-            leading=9.5,
-            alignment=0
-        ),
-        'cell_center': ParagraphStyle(
-            'CellCenter',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=7.5,
-            leading=9.5,
-            alignment=1
-        ),
-        'cell_bold_center': ParagraphStyle(
-            'CellBoldCenter',
-            parent=styles['Normal'],
-            fontName='Helvetica-Bold',
-            fontSize=7.5,
-            leading=9.5,
-            alignment=1
-        )
+        'company': style('Company', fontName='Helvetica-Bold', fontSize=13, leading=16,
+                         alignment=1, textColor=NAVY),
+        'sub': style('Sub', fontName='Helvetica', fontSize=7.5, leading=10,
+                     alignment=1, textColor=GREY_TXT),
+        'title': style('Title', fontName='Helvetica-Bold', fontSize=10.5, leading=14,
+                       alignment=1, textColor=INK),
+        'meta': style('Meta', fontName='Helvetica', fontSize=8.5, leading=11, textColor=INK),
+        'meta_right': style('MetaR', fontName='Helvetica', fontSize=8.5, leading=11,
+                            textColor=INK, alignment=2),
+        'th': style('TH', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                    alignment=1, textColor=colors.black),
+        'th_sm': style('THSm', fontName='Helvetica-Bold', fontSize=7, leading=8.5,
+                       alignment=1, textColor=colors.black),
+        'cell': style('Cell', fontName='Helvetica', fontSize=8, leading=10, textColor=INK),
+        'cell_sm': style('CellSm', fontName='Helvetica', fontSize=7.5, leading=9, textColor=INK),
+        'cell_center': style('CellC', fontName='Helvetica', fontSize=8, leading=10,
+                             alignment=1, textColor=INK),
+        'cell_bold_center': style('CellBC', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                                  alignment=1, textColor=INK),
+        'cell_bold_right': style('CellBR', fontName='Helvetica-Bold', fontSize=8, leading=10,
+                                 alignment=2, textColor=INK),
+        'day': style('Day', fontName='Helvetica', fontSize=7, leading=9,
+                     alignment=1, textColor=INK),
+        'legend': style('Legend', fontName='Helvetica', fontSize=7, leading=9, textColor=GREY_TXT),
     }
 
-def make_single_signature_footer(sig_lines: List[str], width: float = 1000.89):
+
+def add_header(story, st, circle_name, title_lines, sub_line=None):
+    """Agency name/address, double rule, then one or more title lines."""
+    agency = get_agency_header(circle_name)
+    story.append(Paragraph(t(agency["name"]), st['company']))
+    story.append(Paragraph(t(agency["address"]), st['sub']))
+    story.append(Spacer(1, 4))
+    story.append(HRFlowable(width="100%", thickness=1.6, color=NAVY, spaceBefore=0, spaceAfter=1.5))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceBefore=0, spaceAfter=5))
+    for line in title_lines:
+        story.append(Paragraph(line, st['title']))
+    if sub_line:
+        story.append(Paragraph(sub_line, st['sub']))
+    story.append(Spacer(1, 6))
+
+
+def meta_bar(st, items, total_w):
+    """One-row info bar: [(label, value), ...]; last item is right-aligned."""
+    cells = []
+    for i, (label, value) in enumerate(items):
+        style = st['meta_right'] if (i == len(items) - 1 and len(items) > 1) else st['meta']
+        cells.append(Paragraph(f"<b>{t(label)}:</b> {t(value)}", style))
+    bar = Table([cells], colWidths=fit([1] * len(cells), total_w))
+    bar.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.6, GRID),
+        ('BACKGROUND', (0, 0), (-1, -1), META_BG),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    return bar
+
+
+def base_table_style(pad=3):
+    return [
+        ('BACKGROUND', (0, 0), (-1, 0), HEADER_BG),
+        ('BOX', (0, 0), (-1, -1), 1.0, colors.black),
+        ('LINEBELOW', (0, 0), (-1, 0), 1.0, colors.black),
+        ('GRID', (0, 0), (-1, -1), 0.5, GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), pad),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), pad),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+    ]
+
+
+def total_row_style(row_idx):
+    return [
+        ('BACKGROUND', (0, row_idx), (-1, row_idx), TOTAL_BG),
+        ('LINEABOVE', (0, row_idx), (-1, row_idx), 1.2, NAVY),
+        ('TOPPADDING', (0, row_idx), (-1, row_idx), 5),
+        ('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 5),
+    ]
+
+
+def make_signature_footer(sig_lines: List[str]):
     """
-    Renders ONLY ONE signature block at the bottom right of every single page.
+    Draws ONE signature block (with a signing line) at the bottom right of
+    every page, plus the generation time and page number.
     """
+    generated = datetime.now().strftime("%d-%m-%Y %H:%M")
+
     def draw_footer(canv, doc):
+        w = doc.pagesize[0]
+        left = doc.leftMargin
+        right = w - doc.rightMargin
+
         canv.saveState()
-        y_top = 58
-        line_height = 10.0
+        canv.setStrokeColor(NAVY)
 
-        canv.setStrokeColor(colors.HexColor('#cbd5e1'))
+        x = right - 230
+        canv.setStrokeColor(colors.HexColor('#374151'))
         canv.setLineWidth(0.5)
-        canv.line(30, 68, width - 30, 68)
+        canv.line(x, 72, right, 72)
 
-        x = width - 320
-        y = y_top
+        y = 62
+        canv.setFillColor(INK)
         for i, text in enumerate(sig_lines):
-            canv.setFont("Helvetica-Bold" if i == 0 else "Helvetica", 8.0)
+            canv.setFont("Helvetica-Bold" if i == 0 else "Helvetica", 8)
             canv.drawString(x, y, text)
-            y -= line_height
+            y -= 10
 
-        canv.setFont("Helvetica", 7.0)
-        canv.setFillColor(colors.HexColor("#080e15"))
-        canv.drawRightString(width - 36, 12, f"Page {doc.page}")
-
+        canv.setFont("Helvetica", 7)
+        canv.setFillColor(GREY_TXT)
+        canv.drawString(left, 18, f"Generated on {generated}")
+        canv.drawRightString(right, 18, f"Page {doc.page}")
         canv.restoreState()
+
     return draw_footer
 
 
+def new_doc(buffer, title, margin_lr=30, top=28):
+    return SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=margin_lr,
+        rightMargin=margin_lr,
+        topMargin=top,
+        bottomMargin=FOOTER_MARGIN,
+        title=title,
+        author="Enforcement & Vigilance Cell, TPSODL",
+    )
+
+
+EE_SIGNATURE = lambda circle: [
+    "Executive Engineer (Elect.)",
+    "Enforcement & Vigilance Cell",
+    f"TPSODL, {circle.upper()} Circle",
+]
+
+
 # =========================================================================
-# 1. CIRCLE LOG SUMMARY (Single Signature: Executive Engineer)
+# 1. CIRCLE LOG SUMMARY (Signature: Executive Engineer)
 # =========================================================================
 def build_circle_log_pdf(circle_name: str, year: int, month: int, rows: list, total_km: int) -> bytes:
     buffer = io.BytesIO()
     month_name = calendar.month_name[month].upper()
+    circle_up = circle_name.upper()
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=32,
-        bottomMargin=100
-    )
-
+    doc = new_doc(buffer, f"Vehicle Log Summary - {circle_up} - {month_name} {year}", margin_lr=36, top=30)
+    usable = PAGE_W - 72
     st = get_report_styles()
     story = []
 
-    # Dynamic agency header based on circle
-    agency = get_agency_header(circle_name)
-    story.append(Paragraph(agency["name"], st['company']))
-    story.append(Paragraph(agency["address"], st['sub']))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(f"VIGILANCE ENFORCEMENT CELL, {circle_name.upper()} CIRCLE", st['title']))
-    story.append(Paragraph(f"MONTH OF {month_name} VEHICLE LOG BOOK TOTAL KILOMETER DETAILS - {year}", st['title']))
+    add_header(story, st, circle_name, [
+        f"VIGILANCE ENFORCEMENT CELL, {t(circle_up)} CIRCLE",
+        f"MONTH OF {month_name} VEHICLE LOG BOOK TOTAL KILOMETER DETAILS - {year}",
+    ])
+    story.append(meta_bar(st, [("Circle Name", circle_up), ("Period", f"{month_name} {year}")], usable))
     story.append(Spacer(1, 8))
-
-    meta = Table([
-        [
-            Paragraph(f"<b>Circle Name:</b> {circle_name.upper()}", st['cell']),
-            Paragraph(f"<b>Period:</b> {month_name} {year}", ParagraphStyle('R', parent=st['cell'], alignment=2))
-        ]
-    ], colWidths=[384, 385])
-    meta.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-    story.append(meta)
-    story.append(Spacer(1, 6))
 
     headers = [
-        Paragraph("<b>Sl<br/>No.</b>", st['cell_bold_center']),
-        Paragraph("<b>Area / Team</b>", st['cell_bold_center']),
-        Paragraph("<b>Team Leader</b>", st['cell_bold_center']),
-        Paragraph("<b>Supervisor</b>", st['cell_bold_center']),
-        Paragraph("<b>Vehicle No.</b>", st['cell_bold_center']),
-        Paragraph("<b>Total Monthly<br/>Km's Running</b>", st['cell_bold_center'])
+        Paragraph("Sl<br/>No.", st['th']),
+        Paragraph("Area / Team", st['th']),
+        Paragraph("Team Leader", st['th']),
+        Paragraph("Supervisor", st['th']),
+        Paragraph("Vehicle No.", st['th']),
+        Paragraph("Total Monthly<br/>Km's Running", st['th']),
     ]
-    table_data = [headers]
+    data = [headers]
 
     for idx, r in enumerate(rows, start=1):
-        table_data.append([
+        data.append([
             Paragraph(str(idx), st['cell_center']),
-            Paragraph(str(r.get('team_name', '')), st['cell']),
-            Paragraph(str(r.get('team_lead') or r.get('team_leader') or '-'), st['cell']),
-            Paragraph(str(r.get('supervisor') or '-'), st['cell']),
-            Paragraph(str(r.get('vehicle_no') or 'N/A'), st['cell_center']),
-            Paragraph(str(r.get('total_km', 0)), st['cell_center'])
+            Paragraph(t(r.get('team_name', '')), st['cell']),
+            Paragraph(t(r.get('team_lead') or r.get('team_leader') or '-'), st['cell']),
+            Paragraph(t(r.get('supervisor') or '-'), st['cell']),
+            Paragraph(t(r.get('vehicle_no') or 'N/A'), st['cell_center']),
+            Paragraph(t(r.get('total_km', 0)), st['cell_bold_center']),
         ])
 
-    main_table = Table(table_data, colWidths=[35, 174, 185, 185, 95, 95], repeatRows=1)
-    main_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#9ca3af')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-    ]))
-    story.append(main_table)
-    story.append(Spacer(1, 8))
+    if not rows:
+        data.append([Paragraph("No records found for this period.", st['cell_center'])] + [""] * 5)
 
-    tot = Table([
-        [
-            Paragraph(f"<b>Total Kilometer's of {circle_name.upper()} Circle:</b>", st['cell']),
-            Paragraph(f"<b>{total_km} KM</b>", st['cell_bold_center'])
-        ]
-    ], colWidths=[674, 95])
-    tot.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#9ca3af')),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ]))
-    story.append(KeepTogether([tot]))
+    data.append([
+        Paragraph(f"TOTAL KILOMETERS OF {t(circle_up)} CIRCLE", st['cell_bold_right']),
+        "", "", "", "",
+        Paragraph(f"{total_km} KM", st['cell_bold_center']),
+    ])
+    last = len(data) - 1
 
-    footer_cb = make_single_signature_footer(
-        sig_lines=[
-            "Executive Engineer (Elect.)",
-            "Enforcement & Vigilance Cell",
-            f"TPSODL, {circle_name.upper()} Circle"
-        ],
-        width=841.89
-    )
+    cmds = base_table_style(pad=4) + [
+        ('ROWBACKGROUNDS', (0, 1), (-1, last - 1), [colors.white, ZEBRA]),
+        ('SPAN', (0, last), (4, last)),
+    ] + total_row_style(last)
+    if not rows:
+        cmds.append(('SPAN', (0, 1), (-1, 1)))
 
-    doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)
-    buffer.seek(0)
+    table = Table(data, colWidths=fit([35, 174, 185, 185, 95, 95], usable), repeatRows=1)
+    table.setStyle(TableStyle(cmds))
+    story.append(table)
+
+    cb = make_signature_footer(EE_SIGNATURE(circle_name))
+    doc.build(story, onFirstPage=cb, onLaterPages=cb)
     return buffer.getvalue()
 
 
 # =========================================================================
-# 2. FORM D ATTENDANCE (Single Signature: Team Leader OR Executive Engineer)
+# 2. FORM D ATTENDANCE
+#    Total row sums ONLY the last four summary columns.
 # =========================================================================
+_STATUS_FMT = {
+    "P": "P",
+    "A": '<font color="#b91c1c"><b>A</b></font>',
+    "L": '<font color="#b45309"><b>L</b></font>',
+    "WO": '<font color="#475569" size="5"><b>WO</b></font>',   # smaller so it never wraps in a narrow day column
+}
+
+
 def build_form_d_pdf(
     circle_name: str,
     year: int,
@@ -254,47 +322,54 @@ def build_form_d_pdf(
 ) -> bytes:
     buffer = io.BytesIO()
     month_name = calendar.month_name[month].upper()
+    circle_up = circle_name.upper()
     _, num_days = calendar.monthrange(year, month)
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=20,
-        rightMargin=20,
-        topMargin=25,
-        bottomMargin=75
-    )
-
+    doc = new_doc(buffer, f"Form D Attendance - {circle_up} - {month_name} {year}", margin_lr=20, top=25)
+    usable = PAGE_W - 40
     st = get_report_styles()
     story = []
 
-    # Dynamic agency header based on circle
-    agency = get_agency_header(circle_name)
-    scope_title = f"Team: {team_name} | " if team_name else ""
-    story.append(Paragraph(agency["name"], st['company']))
-    story.append(Paragraph(agency["address"], st['sub']))
-    story.append(Spacer(1, 2))
-    story.append(Paragraph(f"FORM D - ATTENDANCE REGISTER FOR THE MONTH OF {month_name} {year}", st['title']))
-    story.append(Paragraph(f"Circle: {circle_name.upper()} | {scope_title}Days in Month: {num_days}", st['sub']))
-    story.append(Spacer(1, 6))
+    scope = f"Team: {t(team_name)} | " if team_name else ""
+    add_header(
+        story, st, circle_name,
+        [f"FORM D - ATTENDANCE REGISTER FOR THE MONTH OF {month_name} {year}"],
+        sub_line=f"Circle: {t(circle_up)} | {scope}Days in Month: {num_days}",
+    )
 
-    day_headers = [Paragraph(f"<b>{d}</b>", st['cell_bold_center']) for d in range(1, num_days + 1)]
+    # ---- column geometry (fills the page, day columns flex with month length)
+    fixed_left = [26, 82, 125]
+    summary_w = [40, 40, 40, 34]
+    day_w = min(16.0, (usable - sum(fixed_left) - sum(summary_w)) / num_days)
+    col_widths = fixed_left + [day_w] * num_days + summary_w
+
+    first_day_col = 3
+    last_day_col = 2 + num_days
+    sum_cols = list(range(last_day_col + 1, last_day_col + 5))
+
+    # ---- header row (day number + weekday initial)
+    weekday_letters = "MTWTFSS"
+    sundays = []
+    day_headers = []
+    for d in range(1, num_days + 1):
+        wd = calendar.weekday(year, month, d)
+        if wd == 6:
+            sundays.append(first_day_col + d - 1)
+        day_headers.append(Paragraph(
+            f"<b>{d}</b><br/><font size=5.5>{weekday_letters[wd]}</font>", st['th_sm']))
+
     headers = [
-        Paragraph("<b>Sl</b>", st['cell_bold_center']),
-        Paragraph("<b>Designation</b>", st['cell_bold_center']),
-        Paragraph("<b>Employee Name</b>", st['cell_bold_center']),
+        Paragraph("Sl", st['th']),
+        Paragraph("Designation", st['th']),
+        Paragraph("Employee Name", st['th']),
         *day_headers,
-        Paragraph("<b>Summary No. Of Days</b>", st['cell_bold_center']),
-        Paragraph("<b>Absent No. Of Days</b>", st['cell_bold_center']),
-        Paragraph("<b>Leave No. Of days</b>", st['cell_bold_center']),
-        Paragraph("<b>Weekly Off</b>", st['cell_bold_center'])
+        Paragraph("Present<br/>Days", st['th_sm']),
+        Paragraph("Absent<br/>Days", st['th_sm']),
+        Paragraph("Leave<br/>Days", st['th_sm']),
+        Paragraph("Weekly<br/>Off", st['th_sm']),
     ]
-    table_data = [headers]
+    data = [headers]
 
-    day_width = 13.5
-    col_widths = [30, 70, 105] + [day_width] * num_days + [40, 40, 40, 30]
-
-    daily_present = {d: 0 for d in range(1, num_days + 1)}
     grand_p = grand_a = grand_l = grand_wo = 0
 
     for idx, emp in enumerate(employees, start=1):
@@ -308,7 +383,6 @@ def build_form_d_pdf(
 
             if status == "P":
                 p_c += 1
-                daily_present[d] += 1
             elif status == "A":
                 a_c += 1
             elif status == "L":
@@ -316,182 +390,159 @@ def build_form_d_pdf(
             elif status == "WO":
                 wo_c += 1
 
-            day_cells.append(Paragraph(status, st['cell_center']))
+            day_cells.append(Paragraph(_STATUS_FMT.get(status, t(status)), st['day']))
 
         grand_p += p_c
         grand_a += a_c
         grand_l += l_c
         grand_wo += wo_c
 
-        table_data.append([
+        data.append([
             Paragraph(str(idx), st['cell_center']),
-            Paragraph(str(emp.get('designation', '-'))[:16], st['cell']),
-            Paragraph(str(emp.get('name', ''))[:18], st['cell']),
+            Paragraph(t(emp.get('designation') or '-'), st['cell_sm']),
+            Paragraph(t(emp.get('name', '')), st['cell_sm']),
             *day_cells,
             Paragraph(str(p_c), st['cell_bold_center']),
             Paragraph(str(a_c), st['cell_bold_center']),
             Paragraph(str(l_c), st['cell_bold_center']),
-            Paragraph(str(wo_c), st['cell_bold_center'])
+            Paragraph(str(wo_c), st['cell_bold_center']),
         ])
 
-    total_day_cells = [Paragraph(f"<b>{daily_present[d]}</b>", st['cell_bold_center']) for d in range(1, num_days + 1)]
-    total_row = [
-        Paragraph("", st['cell_bold_center']),
-        Paragraph("<b>TOTAL</b>", st['cell_bold_center']),
-        Paragraph("<b>Daily Present</b>", st['cell_bold_center']),
-        *total_day_cells,
-        Paragraph(f"<b>{grand_p}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>{grand_a}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>{grand_l}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>{grand_wo}</b>", st['cell_bold_center'])
-    ]
-    table_data.append(total_row)
+    if not employees:
+        data.append([Paragraph("No employees found.", st['cell_center'])] + [""] * (len(headers) - 1))
 
-    last_row_idx = len(table_data) - 1
-    table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
-        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#9ca3af')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('BACKGROUND', (0, last_row_idx), (-1, last_row_idx), colors.HexColor('#f3f4f6')),
-        ('LINEABOVE', (0, last_row_idx), (-1, last_row_idx), 1, colors.HexColor('#374151')),
-        ('TOPPADDING', (0, last_row_idx), (-1, last_row_idx), 3),
-        ('BOTTOMPADDING', (0, last_row_idx), (-1, last_row_idx), 3),
-    ]))
+    # ---- total row: label + the four summary totals only; day cells stay blank
+    data.append([
+        Paragraph("TOTAL", st['cell_bold_right']),
+        "", "",
+        *[""] * num_days,
+        Paragraph(str(grand_p), st['cell_bold_center']),
+        Paragraph(str(grand_a), st['cell_bold_center']),
+        Paragraph(str(grand_l), st['cell_bold_center']),
+        Paragraph(str(grand_wo), st['cell_bold_center']),
+    ])
+    last = len(data) - 1
+
+    cmds = base_table_style(pad=3) + [
+        # tighter padding in the narrow day columns
+        ('LEFTPADDING', (first_day_col, 0), (last_day_col, -1), 1),
+        ('RIGHTPADDING', (first_day_col, 0), (last_day_col, -1), 1),
+        ('ALIGN', (first_day_col, 0), (last_day_col, -1), 'CENTER'),
+        # label spans Sl..Name; blank day cells merged
+        ('SPAN', (0, last), (2, last)),
+        ('SPAN', (first_day_col, last), (last_day_col, last)),
+    ]
+    # light shading on Sunday columns (body rows only)
+    for c in sundays:
+        cmds.append(('BACKGROUND', (c, 1), (c, last - 1), SUNDAY_BG))
+    # emphasise the four summary columns
+    cmds.append(('LINEBEFORE', (sum_cols[0], 0), (sum_cols[0], -1), 1.0, NAVY))
+    cmds += total_row_style(last)
+    if not employees:
+        cmds.append(('SPAN', (0, 1), (-1, 1)))
+
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(cmds))
     story.append(table)
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        "P - Present &nbsp;&nbsp; A - Absent &nbsp;&nbsp; L - Leave &nbsp;&nbsp; "
+        "WO - Weekly Off &nbsp;&nbsp; (shaded columns: Sundays)", st['legend']))
 
     if team_lead:
-        sig_lines = [
-            f"({team_lead})",
-            f"Enforcement Cell, TPSODL, {circle_name.upper()} Circle"
-        ]
+        sig_lines = [f"({team_lead})", f"Enforcement Cell, TPSODL, {circle_up} Circle"]
     else:
-        sig_lines = [
-            "Executive Engineer (Elect.)",
-            "Enforcement & Vigilance Cell",
-            f"TPSODL, {circle_name.upper()} Circle"
-        ]
+        sig_lines = EE_SIGNATURE(circle_name)
 
-    footer_cb = make_single_signature_footer(sig_lines, width=841.89)
-    doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)
-    buffer.seek(0)
+    cb = make_signature_footer(sig_lines)
+    doc.build(story, onFirstPage=cb, onLaterPages=cb)
     return buffer.getvalue()
 
 
 # =========================================================================
-# 3. TEAM VEHICLE LOG BOOK (Remark changed to Signature + 1 Sign Block)
+# 3. TEAM VEHICLE LOG BOOK (Signature column + one sign block)
 # =========================================================================
 def build_team_log_pdf(team_name: str, circle: str, team_lead: str, year: int, month: int, daily_logs: list) -> bytes:
     buffer = io.BytesIO()
     month_name = calendar.month_name[month].upper()
+    circle_up = circle.upper()
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=28,
-        rightMargin=28,
-        topMargin=28,
-        bottomMargin=100
-    )
-
+    doc = new_doc(buffer, f"Daily Vehicle Log - {team_name} - {month_name} {year}", margin_lr=28, top=28)
+    usable = PAGE_W - 56
     st = get_report_styles()
     story = []
 
-    # Dynamic agency header based on circle
-    agency = get_agency_header(circle)
-    story.append(Paragraph(agency["name"], st['company']))
-    story.append(Paragraph(agency["address"], st['sub']))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(f"VIGILANCE ENFORCEMENT CELL, {circle.upper()} CIRCLE", st['title']))
-    story.append(Paragraph(f"DAILY VEHICLE LOG BOOK - {team_name.upper()}", st['title']))
-    story.append(Spacer(1, 6))
-
-    meta = Table([
-        [
-            Paragraph(f"<b>Team Name:</b> {team_name}", st['cell']),
-            Paragraph(f"<b>Team Leader:</b> {team_lead or 'N/A'}", st['cell']),
-            Paragraph(f"<b>Period:</b> {month_name} {year}", ParagraphStyle('RMeta', parent=st['cell'], alignment=2))
-        ]
-    ], colWidths=[260, 260, 265])
-    meta.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-    story.append(meta)
-    story.append(Spacer(1, 6))
-
-    headers = [
-        Paragraph("<b>Date</b>", st['cell_bold_center']),
-        Paragraph("<b>Vehicle No.</b>", st['cell_bold_center']),
-        Paragraph("<b>Supervisor</b>", st['cell_bold_center']),
-        Paragraph("<b>Time<br/>(In - Out)</b>", st['cell_bold_center']),
-        Paragraph("<b>Journey Route (From - To)</b>", st['cell_bold_center']),
-        Paragraph("<b>Start<br/>KM</b>", st['cell_bold_center']),
-        Paragraph("<b>End<br/>KM</b>", st['cell_bold_center']),
-        Paragraph("<b>Run<br/>KM</b>", st['cell_bold_center']),
-        Paragraph("<b>Signature</b>", st['cell_bold_center'])
-    ]
-    table_data = [headers]
-
-    total_km = 0
-    if daily_logs:
-        for r in daily_logs:
-            run_km = int(r.get('total_km') or r.get('run_km') or 0)
-            total_km += run_km
-            table_data.append([
-                Paragraph(str(r.get('date', '')), st['cell_center']),
-                Paragraph(str(r.get('vehicle_no', 'N/A')), st['cell_center']),
-                Paragraph(str(r.get('supervisor') or r.get('driver_name') or '-'), st['cell']),
-                Paragraph(f"{r.get('start_time') or '09:00'} - {r.get('end_time') or '18:00'}", st['cell_center']),
-                Paragraph(str(r.get('journey_route') or r.get('route_details') or '-'), st['cell']),
-                Paragraph(str(r.get('start_km', 0)), st['cell_center']),
-                Paragraph(str(r.get('end_km', 0)), st['cell_center']),
-                Paragraph(str(run_km), st['cell_bold_center']),
-                Paragraph("", st['cell_center'])  # Empty for physical signature
-            ])
-    else:
-        table_data.append([Paragraph("No vehicle entries logged for this month.", st['cell_center'])] + [Paragraph("-", st['cell_center'])] * 8)
-
-    col_widths = [55, 65, 105, 75, 235, 50, 50, 50, 100]
-    log_table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    log_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#9ca3af')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-    ]))
-    story.append(log_table)
+    add_header(story, st, circle, [
+        f"VIGILANCE ENFORCEMENT CELL, {t(circle_up)} CIRCLE",
+        f"DAILY VEHICLE LOG BOOK - {t(team_name.upper())}",
+    ])
+    story.append(meta_bar(st, [
+        ("Team Name", team_name),
+        ("Team Leader", team_lead or "N/A"),
+        ("Period", f"{month_name} {year}"),
+    ], usable))
     story.append(Spacer(1, 8))
 
-    tot = Table([
-        [
-            Paragraph("<b>Total Monthly Kilometer's Running:</b>", st['cell']),
-            Paragraph(f"<b>{total_km} KM</b>", st['cell_bold_center'])
-        ]
-    ], colWidths=[685, 100])
-    tot.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#9ca3af')),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (1, 1), (-1, -1), 4),
-    ]))
-    story.append(KeepTogether([tot]))
+    headers = [
+        Paragraph("Date", st['th']),
+        Paragraph("Vehicle No.", st['th']),
+        Paragraph("Supervisor", st['th']),
+        Paragraph("Time<br/>(In - Out)", st['th']),
+        Paragraph("Journey Route (From - To)", st['th']),
+        Paragraph("Start<br/>KM", st['th']),
+        Paragraph("End<br/>KM", st['th']),
+        Paragraph("Run<br/>KM", st['th']),
+        Paragraph("Signature", st['th']),
+    ]
+    data = [headers]
 
-    footer_cb = make_single_signature_footer(
-        sig_lines=[
-            f"({team_lead})",
-            f"Enforcement Cell, TPSODL, {circle.upper()} Circle"
-        ],
-        width=1000
-    )
+    total_km = 0
+    for r in (daily_logs or []):
+        run_km = int(r.get('total_km') or r.get('run_km') or 0)
+        total_km += run_km
+        start_t, end_t = r.get('start_time'), r.get('end_time')
+        time_txt = f"{t(start_t or '-')} - {t(end_t or '-')}" if (start_t or end_t) else "-"
+        data.append([
+            Paragraph(fmt_date(r.get('date', '')), st['cell_center']),
+            Paragraph(t(r.get('vehicle_no') or 'N/A'), st['cell_center']),
+            Paragraph(t(r.get('supervisor') or r.get('driver_name') or '-'), st['cell']),
+            Paragraph(time_txt, st['cell_center']),
+            Paragraph(t(r.get('journey_route') or r.get('route_details') or '-'), st['cell']),
+            Paragraph(t(r.get('start_km', 0)), st['cell_center']),
+            Paragraph(t(r.get('end_km', 0)), st['cell_center']),
+            Paragraph(str(run_km), st['cell_bold_center']),
+            Paragraph("", st['cell_center']),   # left blank for physical signature
+        ])
 
-    doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)
-    buffer.seek(0)
+    if not daily_logs:
+        data.append([Paragraph("No vehicle entries logged for this month.", st['cell_center'])] + [""] * 8)
+
+    data.append([
+        Paragraph("TOTAL MONTHLY KILOMETER'S RUNNING", st['cell_bold_right']),
+        "", "", "", "", "", "",
+        Paragraph(f"{total_km} KM", st['cell_bold_center']),
+        "",
+    ])
+    last = len(data) - 1
+
+    cmds = base_table_style(pad=6) + [
+        ('ROWBACKGROUNDS', (0, 1), (-1, last - 1), [colors.white, ZEBRA]),
+        ('SPAN', (0, last), (6, last)),
+    ] + total_row_style(last)
+    if not daily_logs:
+        cmds.append(('SPAN', (0, 1), (-1, 1)))
+
+    table = Table(data, colWidths=fit([55, 65, 100, 105, 200, 48, 48, 48, 95], usable), repeatRows=1)
+    table.setStyle(TableStyle(cmds))
+    story.append(table)
+
+    cb = make_signature_footer([f"({team_lead})", f"Enforcement Cell, TPSODL, {circle_up} Circle"])
+    doc.build(story, onFirstPage=cb, onLaterPages=cb)
     return buffer.getvalue()
 
 
 # =========================================================================
-# 4. TEAM PERFORMANCE REPORT (Date, Team, Mode, Load, Amount, DC, KM, Present)
+# 4. TEAM PERFORMANCE REPORT
 # =========================================================================
 def build_team_performance_pdf(
     circle_name: str,
@@ -501,44 +552,33 @@ def build_team_performance_pdf(
 ) -> bytes:
     buffer = io.BytesIO()
     month_name = calendar.month_name[month].upper()
+    circle_up = circle_name.upper()
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=30,
-        rightMargin=30,
-        topMargin=28,
-        bottomMargin=100
-    )
-
+    doc = new_doc(buffer, f"Team Performance - {circle_up} - {month_name} {year}", margin_lr=30, top=28)
+    usable = PAGE_W - 60
     st = get_report_styles()
     story = []
 
-    # Dynamic agency header based on circle
-    agency = get_agency_header(circle_name)
-    story.append(Paragraph(agency["name"], st['company']))
-    story.append(Paragraph(agency["address"], st['sub']))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(f"TEAM-WISE OPERATIONAL PERFORMANCE REPORT - {month_name} {year}", st['title']))
-    story.append(Paragraph(f"Enforcement & Vigilance Cell | Circle: {circle_name.upper()}", st['sub']))
-    story.append(Spacer(1, 8))
+    add_header(
+        story, st, circle_name,
+        [f"TEAM-WISE OPERATIONAL PERFORMANCE REPORT - {month_name} {year}"],
+        sub_line=f"Enforcement & Vigilance Cell | Circle: {t(circle_up)}",
+    )
 
     headers = [
-        Paragraph("<b>Date</b>", st['cell_bold_center']),
-        Paragraph("<b>Team Name</b>", st['cell_bold_center']),
-        Paragraph("<b>Mode of Team Operation</b>", st['cell_bold_center']),
-        Paragraph("<b>Load Booked<br/>(KW)</b>", st['cell_bold_center']),
-        Paragraph("<b>Amount Coll.<br/>(₹)</b>", st['cell_bold_center']),
-        Paragraph("<b>No. of<br/>DC</b>", st['cell_bold_center']),
-        Paragraph("<b>KM Run<br/>(Day)</b>", st['cell_bold_center']),
-        Paragraph("<b>Emp<br/>Present</b>", st['cell_bold_center'])
+        Paragraph("Date", st['th']),
+        Paragraph("Team Name", st['th']),
+        Paragraph("Mode of Team Operation", st['th']),
+        Paragraph("Load Booked<br/>(KW)", st['th']),
+        Paragraph("Amount Coll.<br/>(Rs.)", st['th']),
+        Paragraph("No. of<br/>DC", st['th']),
+        Paragraph("KM Run<br/>(Day)", st['th']),
+        Paragraph("Emp<br/>Present", st['th']),
     ]
-    table_data = [headers]
+    data = [headers]
 
-    tot_load = 0.0
-    tot_amount = 0.0
-    tot_dc = 0
-    tot_km = 0
+    tot_load = tot_amount = 0.0
+    tot_dc = tot_km = 0
 
     for r in performance_rows:
         load_val = float(r.get('load_booked', 0.0) or 0.0)
@@ -551,58 +591,48 @@ def build_team_performance_pdf(
         tot_dc += dc_val
         tot_km += km_val
 
-        mode = r.get('operation_mode', 'Operated Independently')
+        mode = r.get('operation_mode') or 'Operated Independently'
         if mode == "Merged" and r.get('merged_with_team'):
             mode = f"Merged with {r.get('merged_with_team')}"
         elif not r.get('team_leader_present', True):
             mode += " (TL Absent)"
 
-        table_data.append([
-            Paragraph(str(r.get('date', '')), st['cell_center']),
-            Paragraph(str(r.get('team_name', '')), st['cell']),
-            Paragraph(str(mode), st['cell']),
+        data.append([
+            Paragraph(fmt_date(r.get('date', '')), st['cell_center']),
+            Paragraph(t(r.get('team_name', '')), st['cell']),
+            Paragraph(t(mode), st['cell']),
             Paragraph(f"{load_val:.2f}", st['cell_center']),
-            Paragraph(f"₹{amt_val:,.2f}", st['cell_center']),
+            Paragraph(f"{amt_val:,.2f}", st['cell_center']),
             Paragraph(str(dc_val), st['cell_center']),
             Paragraph(str(km_val), st['cell_center']),
-            Paragraph(str(r.get('emp_present_count', 0)), st['cell_bold_center'])
+            Paragraph(str(r.get('emp_present_count', 0)), st['cell_bold_center']),
         ])
 
-    table_data.append([
-        Paragraph("", st['cell_bold_center']),
-        Paragraph("<b>TOTAL</b>", st['cell_bold_center']),
-        Paragraph("", st['cell_bold_center']),
-        Paragraph(f"<b>{tot_load:.2f}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>₹{tot_amount:,.2f}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>{tot_dc}</b>", st['cell_bold_center']),
-        Paragraph(f"<b>{tot_km}</b>", st['cell_bold_center']),
-        Paragraph("-", st['cell_bold_center'])
+    if not performance_rows:
+        data.append([Paragraph("No performance records found for this period.", st['cell_center'])] + [""] * 7)
+
+    data.append([
+        Paragraph("TOTAL", st['cell_bold_right']),
+        "", "",
+        Paragraph(f"{tot_load:.2f}", st['cell_bold_center']),
+        Paragraph(f"{tot_amount:,.2f}", st['cell_bold_center']),
+        Paragraph(str(tot_dc), st['cell_bold_center']),
+        Paragraph(str(tot_km), st['cell_bold_center']),
+        Paragraph("-", st['cell_bold_center']),
     ])
+    last = len(data) - 1
 
-    col_widths = [60, 130, 200, 75, 95, 55, 65, 60]
-    last_idx = len(table_data) - 1
+    cmds = base_table_style(pad=3) + [
+        ('ROWBACKGROUNDS', (0, 1), (-1, last - 1), [colors.white, ZEBRA]),
+        ('SPAN', (0, last), (2, last)),
+    ] + total_row_style(last)
+    if not performance_rows:
+        cmds.append(('SPAN', (0, 1), (-1, 1)))
 
-    perf_table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    perf_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#94a3b8')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('BACKGROUND', (0, last_idx), (-1, last_idx), colors.HexColor('#f1f5f9')),
-        ('LINEABOVE', (0, last_idx), (-1, last_idx), 1.2, colors.HexColor('#1e293b')),
-    ]))
-    story.append(perf_table)
+    table = Table(data, colWidths=fit([60, 130, 200, 75, 95, 55, 65, 60], usable), repeatRows=1)
+    table.setStyle(TableStyle(cmds))
+    story.append(table)
 
-    footer_cb = make_single_signature_footer(
-        sig_lines=[
-            "Executive Engineer (Elect.)",
-            "Enforcement & Vigilance Cell",
-            f"TPSODL, {circle_name.upper()} Circle"
-        ],
-        width=1000
-    )
-
-    doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)
-    buffer.seek(0)
+    cb = make_signature_footer(EE_SIGNATURE(circle_name))
+    doc.build(story, onFirstPage=cb, onLaterPages=cb)
     return buffer.getvalue()

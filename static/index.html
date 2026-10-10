@@ -284,7 +284,7 @@
                     <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
                             placeholder="e.g. Borigumma"></div>
                     <div><label>Team Lead</label><input type="text" id="adm-team-lead"
-                            placeholder="Er. Sai Swaroop Mohanty"></div>
+                            placeholder="Mr. Sai Swaroop Mohanty"></div>
                     <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
                             placeholder="M.Hariprasad Maharshee"></div>
                     <div>
@@ -306,7 +306,25 @@
                     <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
                             value="Executive Engg, Enforcement Cell, TPSODL"></div>
                 </div>
-                <button class="btn primary" id="adm-create-team-btn">Create Team</button>
+                <div style="display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
+                    <button id="adm-create-team-btn" class="btn success" type="button">Create Team</button>
+
+                    <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
+                        <input type="text" id="adm-search-team-query" placeholder="Search Team (Area) or Username"
+                            style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 220px;">
+                        <button id="adm-search-team-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
+                            Search</button>
+                        <button id="adm-update-team-btn" class="btn warning" type="button"
+                            style="display: none; padding: 6px 12px; background-color: #1cc1e7; color: #fff;">✅ Update
+                            Team</button>
+                        <button id="adm-cancel-team-btn" class="btn" type="button"
+                            style="display: none; padding: 6px 10px; background-color: #ec2731; color: #fff;">❌Cancel</button>
+                    </div>
+                </div>
+                <input type="hidden" id="adm-edit-team-id">
+                <div id="adm-team-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
+                <input type="hidden" id="adm-edit-team-id">
+                <div id="adm-team-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
 
                 <hr style="margin: 20px 0;">
 
@@ -317,8 +335,23 @@
                     <div><label>Designation</label><input type="text" id="adm-emp-desig" placeholder="Technician"></div>
                     <div><label>Assign to Team</label><select id="adm-emp-team"></select></div>
                 </div>
-                <button class="btn primary" id="adm-create-emp-btn">Create & Assign Employee</button>
+                <div style="display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
+                    <button id="adm-create-emp-btn" class="btn success" type="button">Create Employee</button>
 
+                    <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
+                        <input type="text" id="adm-search-emp-query" placeholder="Search Emp Code"
+                            style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 180px;">
+                        <button id="adm-search-emp-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
+                            Search</button>
+                          <button id="adm-update-emp-btn" class="btn warning" type="button"
+                            style="display: none; padding: 6px 12px; background-color: #0bf5da; color: #fff;"> ✅Update
+                            Employee</button>
+                        <button id="adm-cancel-emp-btn" class="btn" type="button"
+                            style="display: none; padding: 6px 10px; background-color: #c50d16; color: #fff;"> ❌Cancel</button>
+                    </div>
+                </div>
+                <input type="hidden" id="adm-edit-emp-pk-id">
+                <div id="adm-emp-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
                 <hr style="margin: 20px 0;">
 
                 <h4>3. Upload Document to Assets Folder</h4>
