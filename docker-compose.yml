@@ -9,6 +9,9 @@ services:
       - "8000"
     env_file:
       - .env
+    networks:
+      - default
+      - app_shared_net
 
   aman_proxy:
     image: caddy:latest
@@ -22,7 +25,14 @@ services:
       - aman_caddy_config:/config
     depends_on:
       - aman_fastapi_app
+    networks:
+      - default
 
 volumes:
   aman_caddy_data:
   aman_caddy_config:
+
+networks:
+  default:
+  app_shared_net:
+    external: true
