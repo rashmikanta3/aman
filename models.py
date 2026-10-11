@@ -6,14 +6,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from database import Base
 
-class Admin(Base):
-    __tablename__ = "admins"
-    __table_args__ = {'extend_existing': True}
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    password = Column(String(100), nullable=False)
-    full_name = Column(String(100), default="Operations Administrator")
 
 class Team(Base):
     __tablename__ = "teams"
@@ -109,3 +102,18 @@ class AssetFile(Base):
     filename = Column(String(255), nullable=False)
     file_url = Column(String(500), nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+# models.py
+# models.py
+class Admin(Base):
+    __tablename__ = "admins"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    password = Column(String(100), nullable=False)
+    full_name = Column(String(100), nullable=False)
+    role = Column(String(20), default="admin")          # "admin" or "subadmin"
+    assigned_circles = Column(String(255), default="")  # e.g., "JEYPORE,RAYAGADA"
+    permission_mode = Column(String(20), default="EDIT_VIEW")  # "EDIT_VIEW" or "VIEW_ONLY"
+    is_active = Column(Boolean, default=True)

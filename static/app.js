@@ -15,6 +15,43 @@ document.addEventListener("DOMContentLoaded", () => {
     const $ = (id) => document.getElementById(id);
     const isAdmin = () => !!currentUser && currentUser.role === "admin";
     const isTeam = () => !!currentUser && currentUser.role === "team";
+    const isSubAdmin = () => !!currentUser && currentUser.role === "subadmin";
+
+    // Admin and team logins can edit; sub-admins can edit unless they are VIEW_ONLY.
+    const hasEditRight = () => {
+        if (isAdmin()) return true;
+        if (isSubAdmin()) return currentUser?.permission_mode !== "VIEW_ONLY";
+        return true;
+    };
+
+    // assigned_circles may arrive as an array or as the stored "JEYPORE,RAYAGADA" string.
+    // Always return a clean, upper-cased array.
+    const getAssignedCircles = () => {
+        const raw = currentUser?.assigned_circles;
+        const list = Array.isArray(raw) ? raw : String(raw || "").split(",");
+        return list.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    };
+
+    // Hide circle options a sub-admin isn't assigned to (including "ALL"),
+    // and move the selection to the first permitted circle if needed.
+    function filterDropdownForSubAdmin(selectId) {
+        const el = $(selectId);
+        if (!el || !isSubAdmin()) return;
+
+        const allowed = getAssignedCircles();
+        const isAllowed = (v) => allowed.includes(String(v).trim().toUpperCase());
+
+        Array.from(el.options).forEach((opt) => {
+            const ok = isAllowed(opt.value);
+            opt.hidden = !ok;
+            opt.disabled = !ok;
+        });
+
+        if (!isAllowed(el.value)) {
+            const first = Array.from(el.options).find((o) => isAllowed(o.value));
+            if (first) el.value = first.value;
+        }
+    }
     const normCircle = (c) => (ALL_CIRCLE_VALUES.includes(c || "") ? "" : c);
 
     function esc(v) {
@@ -67,6 +104,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function api(url, options) {
+        const method = String(options?.method || "GET").toUpperCase();
+        if (method !== "GET" && !url.startsWith("/api/login") && !hasEditRight()) {
+            throw new Error("You have view-only access.");
+        }
         const res = await fetch(url, options);
         if (!res.ok) throw new Error(await errorMessage(res, `Request failed (${res.status})`));
         return res.json();
@@ -151,6 +192,42 @@ document.addEventListener("DOMContentLoaded", () => {
     // INIT + TABS
     // =====================================================================
     async function init() {
+
+        if (isAdmin() || isSubAdmin()) {
+            ["att-admin-circle-box", "att-admin-team-box", "vl-admin-circle-box", "vl-admin-team-box"]
+                .forEach((id) => $(id)?.classList.remove("hidden"));
+            $("btn-tab-admin")?.classList.remove("hidden");
+        } else {
+            $("btn-tab-admin")?.classList.add("hidden");
+        }
+
+        if (isSubAdmin()) {
+            // 1. Restrict circles across all dropdowns
+            [
+                "att-filter-circle",
+                "vl-filter-circle",
+                "pdf-circle",
+                "emailCircleSelect",
+                "verify-filter-circle",
+                "dir-team-circle",
+                "dir-emp-circle",
+                "adm-team-circle"
+            ].forEach((id) => filterDropdownForSubAdmin(id));
+
+            // 2. Hide sub-admin creation section from sub-admins
+            const subAdminBox = $("subadmin-management-box");
+            if (subAdminBox) subAdminBox.style.display = "none";
+
+            // 3. If Sub-Admin has "VIEW_ONLY" permission, disable editing controls
+            if (!hasEditRight()) {
+                $("save-att-btn")?.style.setProperty("display", "none");
+                $("lock-att-btn")?.style.setProperty("display", "none");
+                $("save-vl-btn")?.style.setProperty("display", "none");
+                $("lock-vl-btn")?.style.setProperty("display", "none");
+                $("adm-create-team-btn")?.style.setProperty("display", "none");
+                $("adm-create-emp-btn")?.style.setProperty("display", "none");
+            }
+        }
         $("login-view")?.classList.add("hidden");
         $("app-view")?.classList.remove("hidden");
 
@@ -158,13 +235,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if ($("display-team-name")) $("display-team-name").textContent = currentUser.display_name || currentUser.username || "";
         if ($("display-circle")) $("display-circle").textContent = currentUser.circle || "";
         if ($("display-role")) $("display-role").textContent = (currentUser.role || "user").toUpperCase();
-
-        if (isAdmin()) {
-            ["att-admin-circle-box", "att-admin-team-box", "vl-admin-circle-box", "vl-admin-team-box"]
-                .forEach((id) => $(id)?.classList.remove("hidden"));
-        } else {
-            $("btn-tab-admin")?.classList.add("hidden");
-        }
 
         const today = localToday();
         setVal("att-date", today);
@@ -182,8 +252,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             await syncReportTeams();
-            if (isAdmin()) {
-                await Promise.all([syncAttTeams(), syncVlTeams(), syncAdminEmpTeams()]);
+            if (isAdmin() || isSubAdmin()) {
+                await Promise.all([syncAttTeams(), syncVlTeams()]);
+            }
+            if (isAdmin() || isSubAdmin()) {
+                await syncAdminEmpTeams();
                 await loadAdminDirectories();
             }
             await Promise.all([loadDailyAttendance(), loadDailyLog(), loadAssets()]);
@@ -248,7 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const canEdit = isAdmin() || !data.is_locked;
+        const canEdit = hasEditRight() && (isAdmin() || !data.is_locked);
         setLockIndicator($("att-lock-status"), data.is_locked);
         if ($("save-att-btn")) $("save-att-btn").disabled = !canEdit;
         if ($("lock-att-btn")) $("lock-att-btn").disabled = !canEdit;
@@ -361,7 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const locked = !!data.is_locked;
-        const canEdit = isAdmin() || !locked;
+        const canEdit = hasEditRight() && (isAdmin() || !locked);
         setLockIndicator($("log-lock-status"), locked);
         if ($("save-vl-btn")) $("save-vl-btn").disabled = !canEdit;
         if ($("lock-vl-btn")) $("lock-vl-btn").disabled = !canEdit;
@@ -1095,6 +1168,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
     $("btn-run-verify")?.addEventListener("click", loadVerificationData);
+
+    // Sub-admin form helper: returns e.g. ["JEYPORE", "RAYAGADA"] from the #sub-circles multi-select.
+    // Call it from the sub-admin create/update handler when building the request body.
+    function getSelectedSubCircles() {
+        const sel = $("sub-circles");
+        return sel ? Array.from(sel.selectedOptions).map((o) => o.value) : [];
+    }
+
+    // ---- Sub-admin creation (admin only) ----
+    if ($("btn-create-subadmin")) {
+        $("btn-create-subadmin").onclick = async () => {
+            const name = $("sub-name")?.value.trim();
+            const user = $("sub-user")?.value.trim();
+            const pass = $("sub-pass")?.value.trim();
+            const permMode = $("sub-perm-mode")?.value || "EDIT_VIEW";
+            const circles = getSelectedSubCircles();
+
+            if (!name || !user || !pass) return alert("Fill in Name, Username, and Password!");
+            if (circles.length === 0) return alert("Select at least one assigned circle!");
+
+            try {
+                await api("/api/admin/subadmins", jsonOpts("POST", {
+                    full_name: name,
+                    username: user,
+                    password: pass,
+                    assigned_circles: circles,
+                    permission_mode: permMode
+                }));
+                alert(`Sub-Admin created with ${permMode === "VIEW_ONLY" ? "View-Only" : "View & Edit"} rights!`);
+                ["sub-name", "sub-user", "sub-pass"].forEach((id) => setVal(id, ""));
+                Array.from($("sub-circles")?.options || []).forEach((o) => { o.selected = false; });
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        };
+    }
 
     // =====================================================================
     // START

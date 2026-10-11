@@ -6,7 +6,7 @@
     <!-- Tab Icon (Favicon) -->
     <link rel="icon" type="image/png" href="/static/logo.png">
 
-    <!-- Optional fallback for apple devices -->
+    Optional fallback for apple devices
     <link rel="apple-touch-icon" href="/static/logo.png">
     <title>Attendance_LogBook_Enforcemet - TPSODL</title>
     <link rel="stylesheet" href="/static/style.css">
@@ -249,18 +249,15 @@
                 <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px;">
                     <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (PDF)</button>
                     <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log (Circle Summary)</button>
-                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log
-                        (PDF)</button>
-                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊
-                        Team Performance Report (PDF)</button>
+                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log (PDF)</button>
+                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊 Team Performance Report (PDF)</button>
                 </div>
             </section>
 
             <!-- 4. DOCUMENT ASSETS -->
             <section id="tab-assets" class="card hidden">
                 <h3>Document & Format Center</h3>
-                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official
-                    operational circulars.</p>
+                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official operational circulars.</p>
                 <table>
                     <thead>
                         <tr>
@@ -274,19 +271,17 @@
                 </table>
             </section>
 
-            <!-- 5. ADMIN CONTROL PANEL -->
+
+            <!-- 6. ADMIN CONTROL PANEL -->
             <section id="tab-admin" class="card hidden">
                 <h3>Admin Master Control Panel</h3>
                 <hr style="margin: 15px 0;">
 
                 <h4>1. Register New Team & Assign Supervisor</h4>
                 <div class="grid-4" style="margin-top: 10px;">
-                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
-                            placeholder="e.g. Borigumma"></div>
-                    <div><label>Team Lead</label><input type="text" id="adm-team-lead"
-                            placeholder="Mr. Sai Swaroop Mohanty"></div>
-                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
-                            placeholder="M.Hariprasad Maharshee"></div>
+                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name" placeholder="e.g. Borigumma"></div>
+                    <div><label>Team Lead</label><input type="text" id="adm-team-lead" placeholder="Mr. Sai Swaroop Mohanty"></div>
+                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor" placeholder="M.Hariprasad Maharshee"></div>
                     <div>
                         <label>Circle</label>
                         <select id="adm-team-circle">
@@ -300,11 +295,9 @@
                     </div>
                 </div>
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
-                    <div><label>Login Username</label><input type="text" id="adm-team-user"
-                            placeholder="borigamma_team"></div>
+                    <div><label>Login Username</label><input type="text" id="adm-team-user" placeholder="borigamma_team"></div>
                     <div><label>Password</label><input type="text" id="adm-team-pass" placeholder="password123"></div>
-                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
-                            value="Executive Engg, Enforcement Cell, TPSODL"></div>
+                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr" value="Executive Engg, Enforcement Cell, TPSODL"></div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
                     <button id="adm-create-team-btn" class="btn success" type="button">Create Team</button>
@@ -312,17 +305,13 @@
                     <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
                         <input type="text" id="adm-search-team-query" placeholder="Search Team (Area) or Username"
                             style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 220px;">
-                        <button id="adm-search-team-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
-                            Search</button>
+                        <button id="adm-search-team-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍 Search</button>
                         <button id="adm-update-team-btn" class="btn warning" type="button"
-                            style="display: none; padding: 6px 12px; background-color: #1cc1e7; color: #fff;">✅ Update
-                            Team</button>
+                            style="display: none; padding: 6px 12px; background-color: #1cc1e7; color: #fff;">✅ Update Team</button>
                         <button id="adm-cancel-team-btn" class="btn" type="button"
-                            style="display: none; padding: 6px 10px; background-color: #ec2731; color: #fff;">❌Cancel</button>
+                            style="display: none; padding: 6px 10px; background-color: #ec2731; color: #fff;">❌ Cancel</button>
                     </div>
                 </div>
-                <input type="hidden" id="adm-edit-team-id">
-                <div id="adm-team-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
                 <input type="hidden" id="adm-edit-team-id">
                 <div id="adm-team-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
 
@@ -341,18 +330,59 @@
                     <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
                         <input type="text" id="adm-search-emp-query" placeholder="Search Emp Code"
                             style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 180px;">
-                        <button id="adm-search-emp-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
-                            Search</button>
-                          <button id="adm-update-emp-btn" class="btn warning" type="button"
-                            style="display: none; padding: 6px 12px; background-color: #0bf5da; color: #fff;"> ✅Update
-                            Employee</button>
+                        <button id="adm-search-emp-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍 Search</button>
+                        <button id="adm-update-emp-btn" class="btn warning" type="button"
+                            style="display: none; padding: 6px 12px; background-color: #0bf5da; color: #fff;">✅ Update Employee</button>
                         <button id="adm-cancel-emp-btn" class="btn" type="button"
-                            style="display: none; padding: 6px 10px; background-color: #c50d16; color: #fff;"> ❌Cancel</button>
+                            style="display: none; padding: 6px 10px; background-color: #c50d16; color: #fff;">❌ Cancel</button>
                     </div>
                 </div>
                 <input type="hidden" id="adm-edit-emp-pk-id">
                 <div id="adm-emp-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
+
                 <hr style="margin: 20px 0;">
+                <div id="subadmin-management-box">
+                    <h4>7. Register Sub-Admin (Circle-Restricted View & Edit Control)</h4>
+                    <div class="grid-4" style="margin-top: 10px;">
+                        <div>
+                            <label>Full Name</label>
+                            <input type="text" id="sub-name" placeholder="Circle Operations Lead">
+                        </div>
+                        <div>
+                            <label>Login Username</label>
+                            <input type="text" id="sub-user" placeholder="subadmin_south">
+                        </div>
+                        <div>
+                            <label>Password</label>
+                            <input type="password" id="sub-pass" placeholder="••••••••">
+                        </div>
+                        <div>
+                            <label>Permission Right</label>
+                            <select id="sub-perm-mode">
+                                <option value="EDIT_VIEW" selected>View & Edit Control</option>
+                                <option value="VIEW_ONLY">View Only Control (Read-Only)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <label>Assigned Circles (Hold Ctrl / Cmd to select multiple):</label>
+                        <select id="sub-circles" multiple
+                            style="height: 100px; width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px;">
+                            <option value="JEYPORE">JEYPORE</option>
+                            <option value="RAYAGADA">RAYAGADA</option>
+                            <option value="BHANJANAGAR">BHANJANAGAR</option>
+                            <option value="ASKA">ASKA</option>
+                            <option value="BERHAMPUR">BERHAMPUR</option>
+                            <option value="CITY">CITY</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-top: 12px;">
+                        <button id="btn-create-subadmin" class="btn success" type="button">Create Sub-Admin</button>
+                    </div>
+                    <div id="sub-msg" style="margin-top: 6px; font-weight: bold; font-size: 13px;"></div>
+                </div>
 
                 <h4>3. Upload Document to Assets Folder</h4>
                 <form id="upload-asset-form" style="max-width: 500px; margin-top: 10px;">
@@ -366,8 +396,7 @@
                 <hr style="margin: 20px 0;">
 
                 <h4>4. Dispatch Daily Management Email</h4>
-                <div
-                    style="margin: 10px 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
+                <div style="margin: 10px 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
                     <label>Select Circle: </label>
                     <select id="emailCircleSelect">
                         <option value="ALL">All Circles (Consolidated)</option>
@@ -425,8 +454,11 @@
                     </div>
                 </div>
                 <div id="adm-emp-list" style="margin-top: 10px;"></div>
+
+                <hr style="margin: 20px 0;">
             </section>
-            <!-- 6. VERIFICATION PANEL -->
+
+            <!-- 7. VERIFICATION PANEL -->
             <section id="tab-verify" class="card hidden">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h3>Daily Entry Verification</h3>
@@ -487,8 +519,7 @@
                         </thead>
                         <tbody id="verify-att-tbody">
                             <tr>
-                                <td colspan="7" style="text-align:center; color:#94a3b8;">Select date and click "View
-                                    Records"</td>
+                                <td colspan="7" style="text-align:center; color:#94a3b8;">Select date and click "View Records"</td>
                             </tr>
                         </tbody>
                     </table>
@@ -512,8 +543,7 @@
                         </thead>
                         <tbody id="verify-log-tbody">
                             <tr>
-                                <td colspan="9" style="text-align:center; color:#94a3b8;">Select date and click "View
-                                    Records"</td>
+                                <td colspan="9" style="text-align:center; color:#94a3b8;">Select date and click "View Records"</td>
                             </tr>
                         </tbody>
                     </table>
@@ -522,14 +552,12 @@
         </div>
     </div>
 
-
     <script>
         async function sendManualReport() {
             const circle = document.getElementById("emailCircleSelect").value;
             const targetDate = document.getElementById("emailDateSelect").value || null;
             const btn = document.getElementById("send-email-btn");
 
-            // Set loading state
             btn.disabled = true;
             btn.textContent = "Sending mail...";
             btn.style.opacity = "0.7";
@@ -550,7 +578,6 @@
             } catch (err) {
                 alert("Network error: " + err.message);
             } finally {
-                // Restore button state after response
                 btn.disabled = false;
                 btn.textContent = "Send Email";
                 btn.style.opacity = "1";

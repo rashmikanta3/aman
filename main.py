@@ -158,7 +158,31 @@ class EmployeeDetailUpdate(BaseModel):
     designation: Optional[str] = None
     team_id: Optional[int] = None
 
+class SubAdminCreate(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    assigned_circles: List[str]
+    permission_mode: str = "EDIT_VIEW"  # "EDIT_VIEW" or "VIEW_ONLY"
 
+# Helper to check circle authorization
+def validate_circle_access(user_circles: List[str], requested_circle: Optional[str]) -> str:
+    if not user_circles:  # Full admin
+        return requested_circle
+    if not requested_circle or requested_circle in ["ALL", "All Circles"]:
+        return user_circles[0]  # Default to their first assigned circle
+    if requested_circle.upper() not in user_circles:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this circle.")
+    return requested_circle.upper()
+
+def check_subadmin_circle_access(user_role: str, user_circles: list, requested_circle: str):
+    if user_role == "admin":
+        return True
+    if user_role == "subadmin":
+        if not requested_circle or requested_circle.upper() in ["ALL", "ALL CIRCLES"]:
+            return False  # Sub-admins cannot query global "ALL"
+        return requested_circle.strip().upper() in user_circles
+    return False
 # ---------------------------------------------------------------------------
 # Docs protection
 # ---------------------------------------------------------------------------
@@ -198,19 +222,38 @@ def get_open_api_endpoint(admin: models.Admin = Depends(get_current_admin)):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+# main.py
 @app.post("/api/login")
 def login(creds: LoginReq, db: Session = Depends(get_db)):
     admin = db.query(models.Admin).filter(
         models.Admin.username == creds.username,
         models.Admin.password == creds.password
     ).first()
-    if admin:
-        return {"role": "admin", "id": admin.id, "display_name": admin.full_name, "circle": "All Circles"}
 
+    if admin:
+        if not getattr(admin, "is_active", True):
+            raise HTTPException(status_code=403, detail="Account deactivated.")
+        
+        is_sub = getattr(admin, "role", "admin") == "subadmin"
+        raw_circles = admin.assigned_circles or ""
+        circle_list = [c.strip().upper() for c in raw_circles.split(",") if c.strip()]
+        perm_mode = getattr(admin, "permission_mode", "EDIT_VIEW") if is_sub else "EDIT_VIEW"
+
+        return {
+            "role": "subadmin" if is_sub else "admin",
+            "id": admin.id,
+            "display_name": admin.full_name,
+            "circle": ", ".join(circle_list) if is_sub else "All Circles",
+            "assigned_circles": circle_list,
+            "permission_mode": perm_mode  # "EDIT_VIEW" or "VIEW_ONLY"
+        }
+
+    # 2. Check Team (Regular User Login)
     team = db.query(models.Team).filter(
         models.Team.username == creds.username,
         models.Team.password == creds.password
     ).first()
+
     if team:
         if not team.is_active:
             raise HTTPException(status_code=403, detail="Team account deactivated by administrator.")
@@ -223,9 +266,53 @@ def login(creds: LoginReq, db: Session = Depends(get_db)):
             "circle": team.circle,
             "reporting_manager": team.reporting_manager
         }
+
+    # 3. Neither matched
     raise HTTPException(status_code=400, detail="Invalid username or password")
 
+# ---------------------------------------------------------------------------
+# sub domain
+# ---------------------------------------------------------------------------
+@app.post("/api/admin/subadmins")
+def create_subadmin(payload: SubAdminCreate, db: Session = Depends(get_db)):
+    existing = db.query(models.Admin).filter(models.Admin.username == payload.username.strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already registered.")
 
+    clean_circles = [c.strip().upper() for c in payload.assigned_circles if c.strip()]
+    if not clean_circles:
+        raise HTTPException(status_code=400, detail="At least one circle must be assigned.")
+
+    mode = payload.permission_mode.upper()
+    if mode not in ["EDIT_VIEW", "VIEW_ONLY"]:
+        mode = "EDIT_VIEW"
+
+    new_sub = models.Admin(
+        username=payload.username.strip(),
+        password=payload.password.strip(),
+        full_name=payload.full_name.strip(),
+        role="subadmin",
+        assigned_circles=",".join(clean_circles),
+        permission_mode=mode,
+        is_active=True
+    )
+    db.add(new_sub)
+    db.commit()
+    return {"message": f"Sub-Admin created with {mode} access"}
+
+@app.get("/api/admin/subadmins")
+def list_subadmins(db: Session = Depends(get_db)):
+    subs = db.query(models.Admin).filter(models.Admin.role == "subadmin").all()
+    return [
+        {
+            "id": s.id,
+            "username": s.username,
+            "full_name": s.full_name,
+            "assigned_circles": s.assigned_circles,
+            "is_active": s.is_active
+        }
+        for s in subs
+    ]
 # ---------------------------------------------------------------------------
 # Teams
 # ---------------------------------------------------------------------------
@@ -251,13 +338,13 @@ def toggle_team_active(team_id: int, payload: StatusToggle, db: Session = Depend
 
 
 @app.get("/api/teams")
-def list_teams(circle: Optional[str] = None, all_status: bool = False, db: Session = Depends(get_db)):
-    q = db.query(models.Team)
+def get_teams(circle: Optional[str] = None, all_status: bool = False, db: Session = Depends(get_db)):
+    query = db.query(models.Team)
+    if circle and circle.upper() not in ["ALL", ""]:
+        query = query.filter(models.Team.circle.ilike(circle.strip()))
     if not all_status:
-        q = q.filter(models.Team.is_active == True)
-    if circle and circle not in ("All Circles", "ALL"):
-        q = q.filter(models.Team.circle.ilike(circle.strip()))
-    return q.order_by(models.Team.circle, models.Team.team_name).all()
+        query = query.filter(models.Team.is_active == True)
+    return query.order_by(models.Team.circle, models.Team.team_name).all()
 
 
 @app.get("/api/admin/team/search")
