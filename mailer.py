@@ -125,7 +125,7 @@ def send_report_email(db: Session, target_date: date, scope: str = "ALL") -> boo
     # Build detailed section
     breakdown_sections = ""
     for s in stats_list:
-        no_tl = "".join([f"<li>{t}</li>" for t in s['teams_without_tl']]) or "<li><i>None (All TLs Present)</i></li>"
+        no_tl = "".join([f"<li>{t}</li>" for t in s['teams_without_tl']]) or "<li><i>None</i></li>"
         abs_emp = "".join([f"<li>{e['name']} ({e['code']}) - Team: {e['team']}</li>" for e in s['absent_employees']]) or "<li><i>None</i></li>"
 
         breakdown_sections += f"""
