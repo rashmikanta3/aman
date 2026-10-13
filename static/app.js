@@ -329,7 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const tbody = $("att-tbody");
         tbody.innerHTML = "";
         (data.rows || []).forEach((r, idx) => {
-            const options = ["P", "A", "L", "WO"]
+            const options = ["P", "A", "L", "WO","-"]
                 .map((s) => `<option value="${s}" ${r.status === s ? "selected" : ""}>${s}</option>`)
                 .join("");
             const tr = document.createElement("tr");
