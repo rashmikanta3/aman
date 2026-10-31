@@ -37,7 +37,7 @@
             <div>
                 <button class="btn secondary active" id="btn-tab-att">Daily Attendance</button>
                 <button class="btn secondary" id="btn-tab-log">Vehicle Log Book</button>
-                <button class="btn secondary" id="btn-tab-report">PDF Reports</button>
+                <button class="btn secondary" id="btn-tab-report">Reports</button>
                 <button class="btn secondary" id="btn-tab-assets">Document Center</button>
                 <button class="btn secondary" id="btn-tab-admin">Admin Control</button>
                 <button class="btn secondary" id="btn-tab-verify">Verification</button>
@@ -180,7 +180,8 @@
                     <div>
                         <label>Mode of Team Operation</label>
                         <select id="vl-op-mode">
-                            <option value="Operated Independently" selected>Operate Independently</option>
+                            <option value="Operate with Team Leader" selected>Operate with Team Leader</option>
+                            <option value="Operated Independently">Operate Independently</option>
                             <option value="Merged">Merge with Other Team</option>
                             <option value="Did Not Operate">Did Not Operate</option>
                         </select>
@@ -242,19 +243,36 @@
                         </select>
                     </div>
                 </div>
-
                 <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:20px;">
+                    <!-- Form D Attendance -->
                     <button class="btn success" id="dl-att-pdf">📄 Form D Attendance (PDF)</button>
-                    <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log (Circle Summary)</button>
-                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log (PDF)</button>
-                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊 Team Performance Report (PDF)</button>
+                    <button class="btn success" id="dl-att-excel" style="background:#15803d; color:#fff;">📊 Form D
+                        Attendance (Excel)</button>
+
+                    <!-- Circle Summary Log -->
+                    <button class="btn primary" id="dl-circle-log-pdf">📄 Vehicle Log (Circle Summary PDF)</button>
+                    <button class="btn primary" id="dl-circle-log-excel" style="background:#0284c7; color:#fff;">📊
+                        Vehicle Log (Circle Summary Excel)</button>
+
+                    <!-- Team Daily Log -->
+                    <button class="btn btn-outline-primary" id="btn-download-team-log" type="button">📄 Team Daily Log
+                        (PDF)</button>
+                    <button class="btn btn-outline-primary" id="btn-download-team-log-excel" type="button"
+                        style="border:1px solid #0284c7; color:#0284c7;">📊 Team Daily Log (Excel)</button>
+
+                    <!-- Team Performance -->
+                    <button class="btn secondary" id="dl-performance-pdf" style="background:#475569; color:#fff;">📊
+                        Team Performance Report (PDF)</button>
+                    <button class="btn secondary" id="dl-performance-excel" style="background:#334155; color:#fff;">📈
+                        Team Performance Report (Excel)</button>
                 </div>
             </section>
 
             <!-- 4. DOCUMENT ASSETS -->
             <section id="tab-assets" class="card hidden">
                 <h3>Document & Format Center</h3>
-                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official operational circulars.</p>
+                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Download templates and official
+                    operational circulars.</p>
                 <table>
                     <thead>
                         <tr>
@@ -276,9 +294,12 @@
 
                 <h4>1. Register New Team & Assign Supervisor</h4>
                 <div class="grid-4" style="margin-top: 10px;">
-                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name" placeholder="e.g. Borigumma"></div>
-                    <div><label>Team Lead</label><input type="text" id="adm-team-lead" placeholder="Mr. Sai Swaroop Mohanty"></div>
-                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor" placeholder="M.Hariprasad Maharshee"></div>
+                    <div><label>Team Name (Area)</label><input type="text" id="adm-team-name"
+                            placeholder="e.g. Borigumma"></div>
+                    <div><label>Team Lead</label><input type="text" id="adm-team-lead"
+                            placeholder="Mr. Sai Swaroop Mohanty"></div>
+                    <div><label>Supervisor Name</label><input type="text" id="adm-team-supervisor"
+                            placeholder="M.Hariprasad Maharshee"></div>
                     <div>
                         <label>Circle</label>
                         <select id="adm-team-circle">
@@ -292,9 +313,11 @@
                     </div>
                 </div>
                 <div class="grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
-                    <div><label>Login Username</label><input type="text" id="adm-team-user" placeholder="borigamma_team"></div>
+                    <div><label>Login Username</label><input type="text" id="adm-team-user"
+                            placeholder="borigamma_team"></div>
                     <div><label>Password</label><input type="text" id="adm-team-pass" placeholder="password123"></div>
-                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr" value="Executive Engg, Enforcement Cell, TPSODL"></div>
+                    <div><label>Reporting Manager</label><input type="text" id="adm-team-mgr"
+                            value="Executive Engg, Enforcement Cell, TPSODL"></div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
                     <button id="adm-create-team-btn" class="btn success" type="button">Create Team</button>
@@ -302,11 +325,14 @@
                     <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
                         <input type="text" id="adm-search-team-query" placeholder="Search Team (Area) or Username"
                             style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 220px;">
-                        <button id="adm-search-team-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍 Search</button>
+                        <button id="adm-search-team-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
+                            Search</button>
                         <button id="adm-update-team-btn" class="btn warning" type="button"
-                            style="display: none; padding: 6px 12px; background-color: #1cc1e7; color: #fff;">✅ Update Team</button>
+                            style="display: none; padding: 6px 12px; background-color: #1cc1e7; color: #fff;">✅ Update
+                            Team</button>
                         <button id="adm-cancel-team-btn" class="btn" type="button"
-                            style="display: none; padding: 6px 10px; background-color: #ec2731; color: #fff;">❌ Cancel</button>
+                            style="display: none; padding: 6px 10px; background-color: #ec2731; color: #fff;">❌
+                            Cancel</button>
                     </div>
                 </div>
                 <input type="hidden" id="adm-edit-team-id">
@@ -327,11 +353,14 @@
                     <div style="display: inline-flex; gap: 6px; align-items: center; margin-left: auto;">
                         <input type="text" id="adm-search-emp-query" placeholder="Search Emp Code"
                             style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; min-width: 180px;">
-                        <button id="adm-search-emp-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍 Search</button>
+                        <button id="adm-search-emp-btn" class="btn role" type="button" style="padding: 6px 12px;">🔍
+                            Search</button>
                         <button id="adm-update-emp-btn" class="btn warning" type="button"
-                            style="display: none; padding: 6px 12px; background-color: #0bf5da; color: #fff;">✅ Update Employee</button>
+                            style="display: none; padding: 6px 12px; background-color: #0bf5da; color: #fff;">✅ Update
+                            Employee</button>
                         <button id="adm-cancel-emp-btn" class="btn" type="button"
-                            style="display: none; padding: 6px 10px; background-color: #c50d16; color: #fff;">❌ Cancel</button>
+                            style="display: none; padding: 6px 10px; background-color: #c50d16; color: #fff;">❌
+                            Cancel</button>
                     </div>
                 </div>
                 <input type="hidden" id="adm-edit-emp-pk-id">
@@ -393,7 +422,8 @@
                 <hr style="margin: 20px 0;">
 
                 <h4>4. Dispatch Daily Management Email</h4>
-                <div style="margin: 10px 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
+                <div
+                    style="margin: 10px 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
                     <label>Select Circle: </label>
                     <select id="emailCircleSelect">
                         <option value="ALL">All Circles (Consolidated)</option>
@@ -516,7 +546,8 @@
                         </thead>
                         <tbody id="verify-att-tbody">
                             <tr>
-                                <td colspan="7" style="text-align:center; color:#94a3b8;">Select date and click "View Records"</td>
+                                <td colspan="7" style="text-align:center; color:#94a3b8;">Select date and click "View
+                                    Records"</td>
                             </tr>
                         </tbody>
                     </table>
@@ -540,7 +571,8 @@
                         </thead>
                         <tbody id="verify-log-tbody">
                             <tr>
-                                <td colspan="9" style="text-align:center; color:#94a3b8;">Select date and click "View Records"</td>
+                                <td colspan="9" style="text-align:center; color:#94a3b8;">Select date and click "View
+                                    Records"</td>
                             </tr>
                         </tbody>
                     </table>

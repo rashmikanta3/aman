@@ -26,6 +26,7 @@ from database import engine, get_db, SessionLocal, Base
 import queries
 import reports_pdf
 import mailer
+import reports_excel
 
 load_dotenv()
 
@@ -898,3 +899,106 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/")
 def serve_index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+# exel download
+
+@app.get("/api/reports/download-attendance-excel")
+def download_attendance_excel(
+    circle: str,
+    year: int,
+    month: int,
+    team_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    team_lead = None
+    team_name = None
+
+    if team_id:
+        team = db.query(models.Team).filter(models.Team.id == team_id).first()
+        if team:
+            team_lead = team.team_lead
+            team_name = team.team_name
+
+    employees, attendance_map = queries.fetch_attendance_data(db, circle, year, month, team_id)
+
+    excel_bytes = reports_excel.build_form_d_excel(
+        circle_name=circle,
+        year=year,
+        month=month,
+        employees=employees,
+        attendance_map=attendance_map,
+        team_lead=team_lead,
+        team_name=team_name
+    )
+
+    filename_prefix = f"Form_D_Attendance_{team_name}" if team_name else f"Form_D_Attendance_{circle}"
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename_prefix}_{month}_{year}.xlsx"}
+    )
+# 1. Circle Vehicle Log Summary Excel
+@app.get("/api/reports/download-circle-log-excel")
+def download_circle_log_excel(
+    circle: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    rows, total_km = queries.fetch_circle_log_summary(db, circle, year, month)
+    excel_bytes = reports_excel.build_circle_log_excel(circle, year, month, rows, total_km)
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Circle_Summary_{circle}_{month}_{year}.xlsx"}
+    )
+
+
+# 2. Team Daily Vehicle Log Book Excel
+@app.get("/api/reports/download-team-log-excel")
+def download_team_log_excel(
+    team_id: int,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db)
+):
+    team = db.query(models.Team).filter(models.Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    daily_logs = queries.fetch_team_daily_logs(db, team.id, year, month)
+    excel_bytes = reports_excel.build_team_log_excel(
+        team_name=team.team_name,
+        circle=team.circle,
+        team_lead=team.team_lead,
+        year=year,
+        month=month,
+        daily_logs=daily_logs
+    )
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Daily_Log_{team.team_name}_{month}_{year}.xlsx"}
+    )
+
+
+# 3. Team Performance Report Excel
+@app.get("/api/reports/download-performance-excel")
+def download_performance_excel(
+    circle: str,
+    year: int,
+    month: int,
+    team_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    perf_rows = queries.fetch_team_performance_data(db, circle, year, month, team_id)
+    excel_bytes = reports_excel.build_team_performance_excel(circle, year, month, perf_rows)
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Team_Performance_{circle}_{month}_{year}.xlsx"}
+    )

@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // =====================================================================
     const DEFAULT_MANAGER = "Executive Engg, Enforcement Cell, TPSODL";
     const ALL_CIRCLE_VALUES = ["", "ALL", "All Circles"];
+    const VIEW_ONLY_MSG = "You have view-only access.";
 
     let currentUser = null;
     try {
@@ -17,15 +18,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const isTeam = () => !!currentUser && currentUser.role === "team";
     const isSubAdmin = () => !!currentUser && currentUser.role === "subadmin";
 
-    // Admin and team logins can edit; sub-admins can edit unless they are VIEW_ONLY.
+    // NOTE: these checks only control the UI. The backend must enforce the
+    // same rules, because anything stored in localStorage can be edited.
     const hasEditRight = () => {
         if (isAdmin()) return true;
         if (isSubAdmin()) return currentUser?.permission_mode !== "VIEW_ONLY";
         return true;
     };
 
-    // assigned_circles may arrive as an array or as the stored "JEYPORE,RAYAGADA" string.
-    // Always return a clean, upper-cased array.
+    // assigned_circles may arrive as an array or as a "JEYPORE,RAYAGADA" string.
     const getAssignedCircles = () => {
         const raw = currentUser?.assigned_circles;
         const list = Array.isArray(raw) ? raw : String(raw || "").split(",");
@@ -52,6 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (first) el.value = first.value;
         }
     }
+
     const normCircle = (c) => (ALL_CIRCLE_VALUES.includes(c || "") ? "" : c);
 
     function esc(v) {
@@ -106,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function api(url, options) {
         const method = String(options?.method || "GET").toUpperCase();
         if (method !== "GET" && !url.startsWith("/api/login") && !hasEditRight()) {
-            throw new Error("You have view-only access.");
+            throw new Error(VIEW_ONLY_MSG);
         }
         const res = await fetch(url, options);
         if (!res.ok) throw new Error(await errorMessage(res, `Request failed (${res.status})`));
@@ -192,7 +194,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // INIT + TABS
     // =====================================================================
     async function init() {
-
         if (isAdmin() || isSubAdmin()) {
             ["att-admin-circle-box", "att-admin-team-box", "vl-admin-circle-box", "vl-admin-team-box"]
                 .forEach((id) => $(id)?.classList.remove("hidden"));
@@ -218,20 +219,17 @@ document.addEventListener("DOMContentLoaded", () => {
             const subAdminBox = $("subadmin-management-box");
             if (subAdminBox) subAdminBox.style.display = "none";
 
-            // 3. If Sub-Admin has "VIEW_ONLY" permission, disable editing controls
+            // 3. View-only sub-admins: hide editing controls
             if (!hasEditRight()) {
-                $("save-att-btn")?.style.setProperty("display", "none");
-                $("lock-att-btn")?.style.setProperty("display", "none");
-                $("save-vl-btn")?.style.setProperty("display", "none");
-                $("lock-vl-btn")?.style.setProperty("display", "none");
-                $("adm-create-team-btn")?.style.setProperty("display", "none");
-                $("adm-create-emp-btn")?.style.setProperty("display", "none");
+                ["save-att-btn", "lock-att-btn", "save-vl-btn", "lock-vl-btn",
+                    "adm-create-team-btn", "adm-create-emp-btn"]
+                    .forEach((id) => $(id)?.style.setProperty("display", "none"));
             }
         }
+
         $("login-view")?.classList.add("hidden");
         $("app-view")?.classList.remove("hidden");
 
-        setVal("display-team-name", "");
         if ($("display-team-name")) $("display-team-name").textContent = currentUser.display_name || currentUser.username || "";
         if ($("display-circle")) $("display-circle").textContent = currentUser.circle || "";
         if ($("display-role")) $("display-role").textContent = (currentUser.role || "user").toUpperCase();
@@ -254,8 +252,6 @@ document.addEventListener("DOMContentLoaded", () => {
             await syncReportTeams();
             if (isAdmin() || isSubAdmin()) {
                 await Promise.all([syncAttTeams(), syncVlTeams()]);
-            }
-            if (isAdmin() || isSubAdmin()) {
                 await syncAdminEmpTeams();
                 await loadAdminDirectories();
             }
@@ -329,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const tbody = $("att-tbody");
         tbody.innerHTML = "";
         (data.rows || []).forEach((r, idx) => {
-            const options = ["P", "A", "L", "WO","-"]
+            const options = ["P", "A", "L", "WO", "-"]
                 .map((s) => `<option value="${s}" ${r.status === s ? "selected" : ""}>${s}</option>`)
                 .join("");
             const tr = document.createElement("tr");
@@ -347,12 +343,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function saveAttendance(isLock) {
         const records = Array.from(document.querySelectorAll("#att-tbody tr[data-emp]")).map((r) => ({
-            employee_id: parseInt(r.getAttribute("data-emp")),
+            employee_id: parseInt(r.getAttribute("data-emp"), 10),
             status: r.querySelector(".att-status").value
         }));
         if (records.length === 0) return alert("No employees to save.");
 
         try {
+            // is_admin is kept because the backend model expects it, but the
+            // server must verify admin status itself (see notes).
             await api("/api/attendance/submit", jsonOpts("POST", {
                 date: $("att-date").value,
                 records,
@@ -374,15 +372,56 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // =====================================================================
-    // VEHICLE LOG
+    // VEHICLE LOG & TL OPERATION MODE LOGIC
     // =====================================================================
+    // True when the currently loaded log is locked for a non-admin user.
+    let vlLockedForUser = false;
+
     function calcKM() {
-        const s = parseInt($("vl-start-km")?.value) || 0;
-        const e = parseInt($("vl-end-km")?.value) || 0;
+        const s = parseInt($("vl-start-km")?.value, 10) || 0;
+        const e = parseInt($("vl-end-km")?.value, 10) || 0;
         if ($("vl-total-km")) $("vl-total-km").value = e >= s ? e - s : 0;
     }
     $("vl-start-km")?.addEventListener("input", calcKM);
     $("vl-end-km")?.addEventListener("input", calcKM);
+
+    // Enable/disable the TL and operation-mode controls from one place so
+    // they can never get stuck disabled after viewing a locked log.
+    function applyVlControlState() {
+        const editable = hasEditRight() && !vlLockedForUser;
+        const tlPresent = $("vl-tl-present")?.value === "true";
+
+        if ($("vl-tl-present")) $("vl-tl-present").disabled = !editable;
+        // With the TL present the mode is fixed, so it always stays disabled.
+        if ($("vl-op-mode")) $("vl-op-mode").disabled = tlPresent || !editable;
+    }
+
+    function updateOperationModeUI() {
+        const tlPresent = $("vl-tl-present")?.value === "true";
+        const opModeSelect = $("vl-op-mode");
+        const mergeBox = $("vl-merge-box");
+        if (!opModeSelect) return;
+
+        if (tlPresent) {
+            opModeSelect.innerHTML = `<option value="Operate with Team Leader" selected>Operate with Team Leader</option>`;
+            mergeBox?.classList.add("hidden");
+            setVal("vl-merged-team", "");
+        } else {
+            const currentVal = opModeSelect.value;
+            opModeSelect.innerHTML = `
+                <option value="Operated Independently">Operate Independently</option>
+                <option value="Merged">Merge with Other Team</option>
+                <option value="Did Not Operate">Did Not Operate</option>`;
+
+            opModeSelect.value = (currentVal === "Merged" || currentVal === "Did Not Operate")
+                ? currentVal
+                : "Operated Independently";
+            mergeBox?.classList.toggle("hidden", opModeSelect.value !== "Merged");
+        }
+        applyVlControlState();
+    }
+
+    $("vl-tl-present")?.addEventListener("change", updateOperationModeUI);
 
     $("vl-op-mode")?.addEventListener("change", (e) => {
         $("vl-merge-box")?.classList.toggle("hidden", e.target.value !== "Merged");
@@ -405,7 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function getVlTeamId() {
         const v = isTeam() ? currentUser.id : $("vl-filter-team")?.value;
-        return v ? parseInt(v) : null;
+        return v ? parseInt(v, 10) : null;
     }
 
     function clearVlForm() {
@@ -413,9 +452,9 @@ document.addEventListener("DOMContentLoaded", () => {
             .forEach((id) => setVal(id, ""));
         ["vl-start-km", "vl-end-km", "vl-total-km", "vl-load-booked", "vl-amount-collected", "vl-dc-count"]
             .forEach((id) => setVal(id, 0));
+        vlLockedForUser = false;
         setVal("vl-tl-present", "true");
-        setVal("vl-op-mode", "Operated Independently");
-        $("vl-merge-box")?.classList.add("hidden");
+        updateOperationModeUI();
     }
 
     async function loadDailyLog() {
@@ -434,6 +473,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const locked = !!data.is_locked;
+        vlLockedForUser = locked && !isAdmin();
         const canEdit = hasEditRight() && (isAdmin() || !locked);
         setLockIndicator($("log-lock-status"), locked);
         if ($("save-vl-btn")) $("save-vl-btn").disabled = !canEdit;
@@ -454,10 +494,20 @@ document.addEventListener("DOMContentLoaded", () => {
         setVal("vl-dc-count", data.number_of_dc || 0);
         setVal("vl-tl-present", data.team_leader_present !== false ? "true" : "false");
 
-        const mode = data.operation_mode || "Operated Independently";
-        setVal("vl-op-mode", mode);
-        $("vl-merge-box")?.classList.toggle("hidden", mode !== "Merged");
+        // Rebuild the mode options according to TL presence
+        updateOperationModeUI();
+
+        // Apply the saved mode only if it is a valid option for the current TL state
+        const modeSel = $("vl-op-mode");
+        if (data.operation_mode && modeSel) {
+            const valid = Array.from(modeSel.options).some((o) => o.value === data.operation_mode);
+            if (valid) modeSel.value = data.operation_mode;
+            $("vl-merge-box")?.classList.toggle("hidden", modeSel.value !== "Merged");
+        }
         setVal("vl-merged-team", data.merged_with_team || "");
+
+        // Final enable/disable pass (handles locked logs and view-only users)
+        applyVlControlState();
     }
 
     async function saveVehicleLog(isLock) {
@@ -465,6 +515,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!teamId) return alert("Select a team!");
 
         calcKM();
+
+        const isTlPresent = $("vl-tl-present")?.value === "true";
+        const selectedMode = isTlPresent ? "Operate with Team Leader" : ($("vl-op-mode")?.value || "Operated Independently");
+
         const payload = {
             team_id: teamId,
             date: $("vl-date").value,
@@ -473,15 +527,15 @@ document.addEventListener("DOMContentLoaded", () => {
             remarks: $("vl-remarks")?.value.trim() || "",
             start_time: $("vl-start-time")?.value || "",
             end_time: $("vl-end-time")?.value || "",
-            start_km: parseInt($("vl-start-km")?.value) || 0,
-            end_km: parseInt($("vl-end-km")?.value) || 0,
-            total_km: parseInt($("vl-total-km")?.value) || 0,
+            start_km: parseInt($("vl-start-km")?.value, 10) || 0,
+            end_km: parseInt($("vl-end-km")?.value, 10) || 0,
+            total_km: parseInt($("vl-total-km")?.value, 10) || 0,
             journey_route: $("vl-route")?.value.trim() || "",
             load_booked: parseFloat($("vl-load-booked")?.value) || 0.0,
             amount_collected: parseFloat($("vl-amount-collected")?.value) || 0.0,
-            number_of_dc: parseInt($("vl-dc-count")?.value) || 0,
-            team_leader_present: $("vl-tl-present")?.value === "true",
-            operation_mode: $("vl-op-mode")?.value || "Operated Independently",
+            number_of_dc: parseInt($("vl-dc-count")?.value, 10) || 0,
+            team_leader_present: isTlPresent,
+            operation_mode: selectedMode,
             merged_with_team: $("vl-merged-team")?.value.trim() || "",
             lock: isLock,
             is_admin: isAdmin()
@@ -504,7 +558,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // =====================================================================
-    // PDF REPORTS
+    // PDF & EXCEL REPORTS
     // =====================================================================
     async function syncReportTeams() {
         if (!$("pdf-circle") || !$("pdf-team")) return;
@@ -514,16 +568,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if ($("pdf-circle")) $("pdf-circle").onchange = () => syncReportTeams().catch(console.error);
 
-    async function downloadPdfFile(url, fallbackFilename, triggerBtn) {
+    async function downloadReportFile(url, fallbackFilename, triggerBtn, busyText = "Generating...") {
         const originalHtml = triggerBtn ? triggerBtn.innerHTML : "";
         if (triggerBtn) {
             triggerBtn.disabled = true;
-            triggerBtn.innerHTML = "Generating PDF...";
+            triggerBtn.innerHTML = busyText;
         }
 
         try {
             const res = await fetch(url);
-            if (!res.ok) throw new Error(await errorMessage(res, "Failed to generate PDF"));
+            if (!res.ok) throw new Error(await errorMessage(res, "Failed to generate report file"));
 
             const blob = await res.blob();
             const blobUrl = window.URL.createObjectURL(blob);
@@ -542,8 +596,8 @@ document.addEventListener("DOMContentLoaded", () => {
             link.remove();
             window.URL.revokeObjectURL(blobUrl);
         } catch (err) {
-            console.error("PDF Download Error:", err);
-            alert("Error downloading PDF: " + err.message);
+            console.error("Report Download Error:", err);
+            alert("Error downloading report: " + err.message);
         } finally {
             if (triggerBtn) {
                 triggerBtn.disabled = false;
@@ -552,56 +606,69 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function pdfParams() {
+    function reportParams() {
+        // Fall back to a circle the user is actually allowed to see
+        let fallbackCircle = "JEYPORE";
+        if (isSubAdmin()) fallbackCircle = getAssignedCircles()[0] || fallbackCircle;
+        else if (isTeam() && currentUser?.circle) fallbackCircle = currentUser.circle;
+
         return {
-            circle: $("pdf-circle")?.value || "JEYPORE",
+            circle: $("pdf-circle")?.value || fallbackCircle,
             teamId: $("pdf-team")?.value || "",
             year: $("pdf-year")?.value || new Date().getFullYear(),
             month: $("pdf-month")?.value || (new Date().getMonth() + 1)
         };
     }
 
-    if ($("btn-download-team-log")) {
-        $("btn-download-team-log").onclick = () => {
-            const p = pdfParams();
-            let teamId = p.teamId;
-            if (!teamId) {
-                if (isTeam()) {
-                    teamId = currentUser.id;
-                } else {
-                    return alert("Please select a specific Team Area from the 'Team Scope' dropdown.");
+    // Builds a report URL and wires it to a download button.
+    // kind: "circle" -> circle/year/month (+ optional team_id)
+    //       "team"   -> team_id/year/month (team required)
+    function bindReport(btnId, kind, endpoint, ext, filePrefix, busyText) {
+        const btn = $(btnId);
+        if (!btn) return;
+
+        btn.onclick = () => {
+            const p = reportParams();
+            const enc = encodeURIComponent;
+            let url;
+            let name;
+
+            if (kind === "team") {
+                let teamId = p.teamId;
+                if (!teamId) {
+                    if (isTeam()) teamId = currentUser.id;
+                    else return alert("Please select a specific Team Area from the 'Team Scope' dropdown.");
                 }
+                url = `${endpoint}?team_id=${enc(teamId)}&year=${enc(p.year)}&month=${enc(p.month)}`;
+                name = `${filePrefix}_${teamId}_${p.month}_${p.year}.${ext}`;
+            } else {
+                url = `${endpoint}?circle=${enc(p.circle)}&year=${enc(p.year)}&month=${enc(p.month)}`;
+                if (kind === "circle+team" && p.teamId) url += `&team_id=${enc(p.teamId)}`;
+                name = `${filePrefix}_${p.circle}_${p.month}_${p.year}.${ext}`;
             }
-            const url = `/api/reports/download-team-log-pdf?team_id=${encodeURIComponent(teamId)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
-            downloadPdfFile(url, `Daily_Log_Team_${teamId}_${p.month}_${p.year}.pdf`, $("btn-download-team-log"));
+
+            downloadReportFile(url, name, btn, busyText);
         };
     }
 
-    if ($("dl-att-pdf")) {
-        $("dl-att-pdf").onclick = () => {
-            const p = pdfParams();
-            let url = `/api/reports/download-attendance-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
-            if (p.teamId) url += `&team_id=${encodeURIComponent(p.teamId)}`;
-            downloadPdfFile(url, `Form_D_Attendance_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-att-pdf"));
-        };
-    }
+    const GEN_PDF = "Generating PDF...";
+    const GEN_XLS = "Generating Excel...";
 
-    if ($("dl-circle-log-pdf")) {
-        $("dl-circle-log-pdf").onclick = () => {
-            const p = pdfParams();
-            const url = `/api/reports/download-circle-log-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
-            downloadPdfFile(url, `Circle_Summary_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-circle-log-pdf"));
-        };
-    }
+    // 1. Form D Attendance
+    bindReport("dl-att-pdf", "circle+team", "/api/reports/download-attendance-pdf", "pdf", "Form_D_Attendance", GEN_PDF);
+    bindReport("dl-att-excel", "circle+team", "/api/reports/download-attendance-excel", "xlsx", "Form_D_Attendance", GEN_XLS);
 
-    if ($("dl-performance-pdf")) {
-        $("dl-performance-pdf").onclick = () => {
-            const p = pdfParams();
-            let url = `/api/reports/download-performance-pdf?circle=${encodeURIComponent(p.circle)}&year=${encodeURIComponent(p.year)}&month=${encodeURIComponent(p.month)}`;
-            if (p.teamId) url += `&team_id=${encodeURIComponent(p.teamId)}`;
-            downloadPdfFile(url, `Team_Performance_${p.circle}_${p.month}_${p.year}.pdf`, $("dl-performance-pdf"));
-        };
-    }
+    // 2. Circle Vehicle Log Summary
+    bindReport("dl-circle-log-pdf", "circle", "/api/reports/download-circle-log-pdf", "pdf", "Circle_Summary", GEN_PDF);
+    bindReport("dl-circle-log-excel", "circle", "/api/reports/download-circle-log-excel", "xlsx", "Circle_Summary", GEN_XLS);
+
+    // 3. Team Daily Vehicle Log Book
+    bindReport("btn-download-team-log", "team", "/api/reports/download-team-log-pdf", "pdf", "Daily_Log_Team", GEN_PDF);
+    bindReport("btn-download-team-log-excel", "team", "/api/reports/download-team-log-excel", "xlsx", "Daily_Log_Team", GEN_XLS);
+
+    // 4. Team Performance Report
+    bindReport("dl-performance-pdf", "circle+team", "/api/reports/download-performance-pdf", "pdf", "Team_Performance", GEN_PDF);
+    bindReport("dl-performance-excel", "circle+team", "/api/reports/download-performance-excel", "xlsx", "Team_Performance", GEN_XLS);
 
     // =====================================================================
     // DOCUMENT CENTER (Cloudflare R2)
@@ -627,7 +694,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </a>`;
                 if (isAdmin()) {
                     actions += `
-          <button class="btn danger btn-del-asset" data-id="${a.id}" style="margin-left:6px; padding:6px 10px;">
+          <button class="btn danger btn-del-asset" data-id="${esc(a.id)}" style="margin-left:6px; padding:6px 10px;">
             🗑️ Delete
           </button>`;
                 }
@@ -645,7 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 btn.onclick = async () => {
                     if (!confirm("Are you sure you want to delete this document?")) return;
                     try {
-                        await api(`/api/admin/assets/${btn.getAttribute("data-id")}`, { method: "DELETE" });
+                        await api(`/api/admin/assets/${encodeURIComponent(btn.getAttribute("data-id"))}`, { method: "DELETE" });
                         loadAssets();
                     } catch (err) {
                         alert("Failed to delete document: " + err.message);
@@ -661,6 +728,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (uploadForm) {
         uploadForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            if (!hasEditRight()) return alert(VIEW_ONLY_MSG);
 
             const title = $("asset-title")?.value.trim() || "";
             const file = $("asset-file")?.files?.[0] || null;
@@ -723,7 +791,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <td><code>${esc(t.username)}</code></td>
           <td><strong style="color:${t.is_active ? "#16a34a" : "#dc2626"}">${t.is_active ? "ACTIVE" : "INACTIVE"}</strong></td>
           <td>
-            <button class="btn ${t.is_active ? "danger" : "success"} btn-toggle-team" data-id="${t.id}" data-active="${t.is_active}">
+            <button class="btn ${t.is_active ? "danger" : "success"} btn-toggle-team" data-id="${esc(t.id)}" data-active="${t.is_active}">
               ${t.is_active ? "Deactivate" : "Activate"}
             </button>
           </td>
@@ -737,7 +805,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const id = btn.getAttribute("data-id");
                 const active = btn.getAttribute("data-active") === "true";
                 try {
-                    await api(`/api/admin/teams/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
+                    await api(`/api/admin/teams/${encodeURIComponent(id)}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
                     await refreshAllTeamSelects();
                     await loadAdminDirectories();
                 } catch (err) {
@@ -747,7 +815,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         // ---- Employees ----
-        const emps = await api(`/api/admin/employees/all?circle=${encodeURIComponent($("dir-emp-circle")?.value || "")}`);
+        const empCircle = normCircle($("dir-emp-circle")?.value) || "";
+        const emps = await api(`/api/admin/employees/all?circle=${encodeURIComponent(empCircle)}`);
 
         let eHtml = `<table><thead><tr><th>Circle</th><th>Team</th><th>Emp Code</th><th>Employee Name</th><th>Designation</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
         (emps || []).forEach((e) => {
@@ -761,7 +830,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <td>${esc(e.designation)}</td>
           <td><strong style="color:${active ? "#16a34a" : "#dc2626"}">${active ? "ACTIVE" : "INACTIVE"}</strong></td>
           <td>
-            <button class="btn ${active ? "danger" : "success"} btn-toggle-emp" data-id="${e.id}" data-active="${active}">
+            <button class="btn ${active ? "danger" : "success"} btn-toggle-emp" data-id="${esc(e.id)}" data-active="${active}">
               ${active ? "Deactivate" : "Activate"}
             </button>
           </td>
@@ -775,7 +844,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const id = btn.getAttribute("data-id");
                 const active = btn.getAttribute("data-active") === "true";
                 try {
-                    await api(`/api/admin/employees/${id}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
+                    await api(`/api/admin/employees/${encodeURIComponent(id)}/toggle-active`, jsonOpts("PUT", { is_active: !active }));
                     await loadAdminDirectories();
                 } catch (err) {
                     alert("Update failed: " + err.message);
@@ -942,7 +1011,7 @@ document.addEventListener("DOMContentLoaded", () => {
             emp_code: $("adm-emp-code")?.value.trim() || "",
             name: $("adm-emp-name")?.value.trim() || "",
             designation: $("adm-emp-desig")?.value.trim() || "",
-            team_id: parseInt($("adm-emp-team")?.value) || null
+            team_id: parseInt($("adm-emp-team")?.value, 10) || null
         };
     }
 
@@ -1089,8 +1158,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("subtab-verify-log")?.addEventListener("click", () => switchVerifyView(false));
 
     function attendanceBadge(r) {
-        if (r.status === "P" || r.status === "Present") return "role";
-        return "danger";
+        return (r.status === "P" || r.status === "Present") ? "role" : "danger";
     }
 
     async function loadVerificationData() {
@@ -1169,8 +1237,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     $("btn-run-verify")?.addEventListener("click", loadVerificationData);
 
-    // Sub-admin form helper: returns e.g. ["JEYPORE", "RAYAGADA"] from the #sub-circles multi-select.
-    // Call it from the sub-admin create/update handler when building the request body.
+    // Returns e.g. ["JEYPORE", "RAYAGADA"] from the #sub-circles multi-select.
     function getSelectedSubCircles() {
         const sel = $("sub-circles");
         return sel ? Array.from(sel.selectedOptions).map((o) => o.value) : [];
